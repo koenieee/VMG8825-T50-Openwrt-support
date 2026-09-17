@@ -173,8 +173,14 @@ that in place of `vmg8825-t50-bootloader-patched.bin` below.
    ==> boot flag = 0
    from main
    ```
-   with no `ATSE`/`ATEN` unlock needed — the debug-unlock from §3a is no
-   longer required for any future boot.
+    with no `ATSE`/`ATEN` unlock needed — the debug-unlock from §3a is no
+    longer required for any future boot.
+
+Once you have a shell, you don't need to stay on serial: dropbear (SSH)
+is enabled by default like any stock OpenWrt build, reachable on the LAN
+IP (`192.168.1.1` by default, `cat /etc/config/network` to confirm) as
+soon as `gmac0` links up. Serial stays the only way in for a broken/no
+network state, but for day-to-day config once booted, SSH is easier.
 
 ## 5. Bring up WiFi
 

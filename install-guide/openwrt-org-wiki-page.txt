@@ -1,0 +1,103 @@
+Draft for https://openwrt.org/inbox/toh/zyxel/zyxel_vmg8825-t50
+(DokuWiki syntax — paste into the page editor there)
+
+====== Zyxel VMG8825-T50 ======
+
+**Status: community port, works but not upstreamed yet.** OpenWrt boots
+and runs on this device, but there is no official/signed install path —
+you need to open the case and use a serial console. This is not a
+beginner-friendly "click to flash" device; it's realistic for someone
+comfortable with a soldering iron and a terminal, following a guide
+step by step.
+
+All install steps, prebuilt images, and source are maintained here:
+**https://github.com/koenieee/VMG8825-T50-Openwrt-support** — this wiki
+page is a summary; follow the repo's ''install-guide/README.md'' for
+the actual walkthrough, don't try to improvise from this page alone.
+
+===== Hardware =====
+
+^ Component       ^ Detail                                                        ^
+| SoC             | EcoNet EN7516 (EN751627 family), MIPS 1004Kc, 2x900 MHz, big-endian |
+| RAM             | 512 MB DDR3                                                   |
+| Flash           | SPI NAND, Winbond W25M02GV, 256 MiB                           |
+| Ethernet        | 1x WAN + 4x LAN gigabit, integrated switch                    |
+| WiFi            | MediaTek MT7615 (WiFi 5, dual-band), PCIe                     |
+| USB             | 1x USB 2.0 + 1x USB 3.0                                       |
+| Serial console  | 115200 8N1, CR-only, 3.3V, unpopulated header inside the case |
+| Bootloader      | Zyxel zloader v1.4.4 (2021-01-04)                             |
+
+OpenWrt target: ''econet'' / subtarget ''en751627''.
+
+===== What works =====
+
+  * Boots fully to a normal OpenWrt userspace: squashfs root + a
+    persistent overlay, root shell, SSH once the network is up.
+  * WiFi (both radios, AP and client mode).
+  * LAN (all 4 ports run as one unmanaged switch, no per-port VLANs yet).
+  * WAN: link comes up, basic traffic confirmed; not yet stability-tested
+    under sustained load (see the repo's ''NEXT_STEPS.md'' for exactly
+    what's outstanding there).
+  * USB storage.
+
+===== What does not work / not tested yet =====
+
+  * No per-port VLAN control (no DSA switch driver for this SoC in
+    OpenWrt yet — one unmanaged bridge for all 4 LAN ports).
+  * WAN needs a real-world throughput re-test (see repo for details).
+  * Only 256 MB of the 512 MB RAM is currently mapped.
+  * DSL/ADSL2+/VDSL2 is not supported and not planned — this port only
+    targets the Ethernet WAN use case.
+
+===== Before you start =====
+
+  * **This can brick your router.** There is no official recovery path —
+    serial console is the only way in if something goes wrong. Read the
+    full install guide before opening the case.
+  * You will need: a 3.3V USB-TTL serial adapter, a soldering iron or
+    pogo pins, and a PC with ''python3'' and ''atftp'' installed.
+  * **Check your bootloader banner first.** The prebuilt images only
+    match one exact zloader build (see the install guide's precondition
+    section) — if your banner differs, stop and don't use the prebuilt
+    files.
+
+===== Installation (summary) =====
+
+Full details, exact commands, and safety checks are in the repo's
+''install-guide/README.md'' — this is the short version so you know
+what to expect before diving in:
+
+  - Open the case, solder a header, connect the serial adapter, confirm
+    you see the expected bootloader banner.
+  - Debug-unlock the bootloader (one small helper tool derives a
+    one-time password from a seed it prints).
+  - Flash the prebuilt OpenWrt image to the main partition. The other,
+    factory-original partition acts as a fallback — this step is safe
+    to retry.
+  - Boot it, confirm you have a working shell.
+  - Flash a small bootloader patch so future boots no longer need the
+    debug-unlock step. **This one step has no fallback** — the guide's
+    backup steps before it are not optional.
+
+===== Recovery =====
+
+The router keeps a second, factory-original copy of OpenWrt's main
+partition as a fallback, so a bad OpenWrt flash is always recoverable by
+just reflashing over serial. The one irreversible step is patching the
+bootloader itself (see above) — do the backups the guide asks for before
+that step, every time.
+
+===== Source / building your own image =====
+
+This target lives in mainline OpenWrt's ''econet''/''en751627'' support;
+this device's board files are not upstreamed yet and are carried as an
+overlay in the project repo:
+https://github.com/koenieee/VMG8825-T50-Openwrt-support (see its
+''openwrt-overlay/'' — a drop-in copy of the relevant OpenWrt source
+paths, plus the README with the exact build commands).
+
+===== Discussion / help =====
+
+Open an issue on the GitHub repo above for install problems or to report
+you got it working — a second confirmed unit and any stability testing
+under real use are especially useful contributions right now.

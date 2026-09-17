@@ -51,13 +51,18 @@ console, and following `install-guide/README.md` step by step.
   `NEXT_STEPS.md`).
 - Only LAN port 1 has been individually hardware-tested; LAN2-4 share
   the same switch and should work but that hasn't been verified port by
-  port.
+  port. LAN throughput has been measured (iperf3): stable under load,
+  but capped well under gigabit line rate — see `NEXT_STEPS.md`.
 - No DSA (`mediatek,mt7530`) support for this target in OpenWrt yet — the
   switch runs as a dumb, unmanaged bridge (all LAN ports together, no
   per-port VLAN control from Linux).
 - Both WiFi radios default to 5 GHz; both chips also support 2.4 GHz —
   set one radio's `band` to `2g` in `/etc/config/wireless` for real
   dual-band instead of two overlapping 5 GHz APs.
+- WiFi client (STA) mode was observed to wedge the radio's firmware
+  after sustained runtime (recurring firmware-timeout errors, recovered
+  by a reboot) — see `NEXT_STEPS.md` for the one occurrence recorded so
+  far; not yet characterized as reproducible or STA-specific.
 - `dev_flash_cycle.py`'s MTD3 block range is hardcoded for this image's
   current size/layout; re-derive it (`ATSH`/`/proc/mtd`) if you change
   partition sizes or the image grows past the current boundary.

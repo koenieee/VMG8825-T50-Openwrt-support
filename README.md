@@ -131,7 +131,8 @@ bootloader, and flashing the prebuilt OpenWrt image, in order.
 
 For the bootloader patch's technical details (what it changes, why both
 gates are needed) see `BOOTLOADER-PATCH.md`. For the vendor image
-checksum format see `CHECKSUM_RESOLUTION.md`.
+checksum format see `CHECKSUM_RESOLUTION.md`. For the story of how this
+port was debugged end to end, see `HISTORY.md`.
 
 ---
 

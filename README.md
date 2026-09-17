@@ -1,0 +1,1 @@
+# VMG8825-T50-Openwrt-support

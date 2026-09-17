@@ -109,6 +109,7 @@ module for a different smart-plug API.
 |-----------|--------|
 | SoC | EcoNet **EN7516** (EN751627 family), MIPS **1004Kc**, 2x900 MHz, big-endian |
 | OpenWrt target | `econet` / subtarget **`en751627`** |
+| Tested against | OpenWrt `main` @ [`928cd26`](https://github.com/openwrt/openwrt/commit/928cd26bd938b8ac46b79e14f5f9f4b1d772abe8) (2026-09-17), kernel **6.18** — `openwrt/` is a submodule tracking `main`, which moves; `git checkout 928cd26` in `openwrt/` to reproduce the exact tested combination, or use it as a starting point and expect some drift on a newer checkout |
 | RAM | 512 MB DDR3 (devicetree currently maps a conservative 256 MB, see `NEXT_STEPS.md`) |
 | Flash | **SPI NAND** Winbond **W25M02GV**, 256 MiB, SLC, page 2048 / OOB 64 |
 | Switch/ethernet | Integrated in SoC, 1xWAN + 4xLAN gigabit — no mainline driver, out-of-tree `econet-eth` used |
@@ -192,7 +193,11 @@ known gaps a contributor could pick up next, roughly in priority order:
   MAC/serial/board-info lines redacted the same way
   `BOOTLOADER-PATCH.md` describes for the bootloader binary — would
   help newcomers confirm they're seeing a healthy boot vs. something
-  gone wrong.
+  gone wrong. (An old raw capture exists in this project's private
+  dev history, but it's a noisy debug-session dump — mixed baud-rate
+  garbage from the vendor's progress counter, no clean start/end — not
+  something fit to hand to newcomers as-is; a fresh, clean capture is
+  better than salvaging that one.)
 
 Contributions on any of the above are welcome — open an issue or PR.
 

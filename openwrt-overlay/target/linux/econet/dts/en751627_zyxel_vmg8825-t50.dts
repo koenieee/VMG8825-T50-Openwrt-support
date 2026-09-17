@@ -1,0 +1,310 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/dts-v1/;
+
+#include "en751627.dtsi"
+#include "en751627_zyxel_vmg8825-t50-mt7615-eeprom.dtsi"
+
+/ {
+	model = "Zyxel VMG8825-T50";
+	compatible = "zyxel,vmg8825-t50", "econet,en751627";
+
+	memory@0 {
+		device_type = "memory";
+		/*
+		 * OEM bootlog reports 512MB DRAM, but the vendor kernel only
+		 * mapped ~432MB (rest reserved for its own use). This build
+		 * maps a conservative 256MB instead. Bumping to 0x1c000000
+		 * (448MB) or 0x20000000 (512MB) has not been tried -- confirm
+		 * what your zloader/kernel actually maps before changing this.
+		 */
+		reg = <0x00000000 0x10000000>;
+	};
+
+	chosen {
+		stdout-path = "/serial@1fbf0000:115200";
+		/* rootfs is UBI-formatted (see image/en751627.mk); kernel
+		 * auto-attaches by MTD partition label since zloader has no
+		 * UBI awareness of its own. Partition is named "ubi", NOT
+		 * "rootfs": a legacy OpenWrt hack (hack-6.18/420-mtd-support-
+		 * OpenWrt-s-MTD_ROOTFS_ROOT_DEV.patch) claims ROOT_DEV as raw
+		 * mtdblock for any MTD partition literally named "rootfs"
+		 * before UBI attaches, starving pending-6.18/493's correct
+		 * "set ROOT_DEV to ubiblock rootfs volume" logic (which only
+		 * fires if ROOT_DEV is still unset). The UBI *volume* inside
+		 * (created by ubinize-image.sh) is still named "rootfs", so
+		 * 493 still matches and sets root to /dev/ubiblockN_0 -- as
+		 * long as nothing claimed ROOT_DEV first. Same pattern as
+		 * en751221_huawei_hg2821t-u.dts (rootfs_a/rootfs_b labels).
+		 *
+		 * A SECOND, independent UBI instance is attached on the
+		 * separate "rootfs_data" MTD partition (see the partition
+		 * node further down -- the misc/reservearea tail, not the
+		 * "wwan" partition, which was too small to hold a UBIFS
+		 * volume at all). This is where the writable overlay volume
+		 * lives. "ubi" (tclinux) stays a STATIC, read-only
+		 * squashfs-only UBI image with no dynamic/autoresize volume
+		 * of its own, so its raw bytes never change after flashing --
+		 * the OEM bootloader's whole-partition boot-time checksum on
+		 * tclinux therefore stays valid forever, which is what makes
+		 * an unattended coldboot possible once the bootloader is also
+		 * patched (see BOOTLOADER-PATCH.md). fstools' mount_root
+		 * finds the "rootfs_data" UBI volume by name across ALL
+		 * attached UBI instances, not just the one carrying "rootfs"
+		 * -- this split-partition pattern is an established OpenWrt
+		 * technique, not novel to this board.
+		 */
+		bootargs = "ubi.mtd=ubi ubi.mtd=rootfs_data";
+	};
+};
+
+&nand {
+	status = "okay";
+	econet,bmt;
+
+	/*
+	 * Winbond W25M02GV = 2Gb / 256MiB SPI NAND (SLC).
+	 *
+	 * Layout below is CONFIRMED from the OEM boot capture ("Creating 13
+	 * MTD partitions", see the comment above partition@3880000) and
+	 * matches the OEM mtdparts string on the OpenWrt wiki:
+	 *   0[bootloader],0[romfile],56M[tclinux],-[tclinux_slave],
+	 *   1M[wwan],4M[data],1M[rom-d],118M[misc]
+	 * These offsets are properties of this firmware/bootloader build
+	 * (factory NAND layout), not of one physical unit -- see
+	 * install-guide/README.md's precondition section. Still worth a
+	 * sanity check against your own device's `cat /proc/mtd` /
+	 * `dmesg | grep -i -E 'mtd|partition|nand'` before flashing, as
+	 * confirmation that your unit matches that precondition.
+	 */
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0all {
+			label = "all_of_flash";
+			reg = <0x0 0x10000000>;	/* full 256MiB */
+			read-only;
+		};
+
+		partition@0 {
+			label = "bootloader";
+			reg = <0x0 0x40000>;
+			/* Deliberately NOT read-only: needed so a booted OpenWrt
+			 * userspace can nandwrite a patched zloader stage2 here
+			 * (CRC-compare bypass patch, see BOOTLOADER-PATCH.md
+			 * and bldr-patch/patch_stage2_crc_bypass.py). ONLY ever
+			 * written deliberately, from a booted shell, with a
+			 * pre-write backup + post-write readback/md5 verify -- see
+			 * install-guide/README.md §4 before touching this.
+			 */
+		};
+
+		partition@40000 {
+			label = "romfile";
+			reg = <0x40000 0x40000>;
+			read-only;
+		};
+
+		partition@80000 {
+			label = "tclinux";
+			reg = <0x80000 0x3800000>;	/* 56MiB image slot */
+			read-only;
+			econet,enable-remap;
+		};
+
+		/* Nested rootfs inside tclinux: UBI image (squashfs + ubifs
+		 * overlay volume), NOT a raw squashfs -- must stay writable
+		 * for UBI's dynamic rootfs_data volume to persist changes.
+		 * Label deliberately NOT "rootfs" -- see chosen/bootargs
+		 * comment above. */
+		partition@480000 {
+			label = "ubi";
+			reg = <0x480000 0x3400000>;
+		};
+
+		/*
+		 * Offsets below are CONFIRMED from the OEM boot capture
+		 * (oem_boot_capture.log, "Creating 13 MTD partitions"):
+		 *   0x0080000-0x3880000 tclinux (main, above)
+		 *   0x3880000-0x6ee0000 tclinux_slave  (OEM firmware = our recovery)
+		 *   0x6ee0000-0x6fe0000 wwan   (1M)
+		 *   0x6fe0000-0x73e0000 data   (4M)
+		 *   0x73e0000-0x74e0000 rom-d  (1M)
+		 *   0x74e0000-0xeae0000 reservearea (WiFi CALDATA + OEM F-Secure
+		 *     "misc"; total size 0x7600000 = 118MiB, matches OEM's own
+		 *     "118M[misc]" mtdparts string EXACTLY. Split below into a
+		 *     read-only "reservearea" (caldata + F-Secure, untouched)
+		 *     and a writable "rootfs_data" tail (OpenWrt overlay).)
+		 */
+
+		/* OEM firmware slot -- keep untouched, this is our zloader recovery */
+		partition@3880000 {
+			label = "tclinux_slave";
+			reg = <0x3880000 0x3660000>;
+			read-only;
+		};
+
+		partition@6ee0000 {
+			label = "wwan";
+			reg = <0x6ee0000 0x100000>;
+		};
+
+		partition@6fe0000 {
+			label = "data";
+			reg = <0x6fe0000 0x400000>;
+		};
+
+		partition@73e0000 {
+			label = "rom-d";
+			reg = <0x73e0000 0x100000>;
+		};
+
+		/*
+		 * This partition was long assumed (via an OEM log reference,
+		 * never content-verified) to hold WiFi calibration
+		 * (CALDATA_default.bin) at offset 0x0. It doesn't: the whole
+		 * 0x2400000 region is OEM F-Secure "SENSE SDK" filesystem
+		 * data start to finish (deleted/unlinked JFFS2 markers,
+		 * sense.* scripts) -- there is no WiFi caldata anywhere in
+		 * this partition. See the WiFi section below for how that's
+		 * handled instead (MT7615E cards don't need it here). Kept
+		 * read-only and untouched regardless, since it's still live
+		 * OEM security-scan data -- only the confirmed-empty tail
+		 * beyond it (the "rootfs_data" partition node right after)
+		 * was repurposed for OpenWrt's overlay.
+		 */
+		factory: partition@74e0000 {
+			label = "reservearea";
+			reg = <0x74e0000 0x2400000>;
+			read-only;
+		};
+
+		/*
+		 * The unused tail of the OEM "reservearea"/"misc" partition,
+		 * repurposed for OpenWrt's writable overlay. Confirmed 100%
+		 * erased (0xFF) from here through the end of "reservearea"
+		 * (0xeae0000) -- well clear of both the WiFi caldata region
+		 * and the OEM F-Secure data (first ~36MiB of "reservearea"
+		 * above). The much smaller "wwan" partition (1MiB) was
+		 * considered first but rejected: UBIFS needs at least 17 LEBs
+		 * (~2.1MiB) to mount at all, so it could never have worked
+		 * regardless of tuning. This partition (82MiB) is comfortably
+		 * above that floor. UBI-formatted, attached as a SECOND,
+		 * independent UBI instance from tclinux's own (see
+		 * chosen/bootargs above) holding only the "rootfs_data"
+		 * volume -- kept OUT of tclinux's own UBI so tclinux's raw
+		 * bytes stay static forever after flashing (needed for the
+		 * OEM bootloader's boot-time whole-partition checksum on
+		 * tclinux to stay valid, see BOOTLOADER-PATCH.md).
+		 */
+		partition@98e0000 {
+			label = "rootfs_data";
+			reg = <0x98e0000 0x5200000>;
+		};
+	};
+};
+
+/*
+ * WiFi: OEM wiki lists MediaTek MT7615 (Wi-Fi 5, dual-band), PCIe-attached
+ * (ra0-ra3 / rai0-rai3 in the vendor log). The EN751627 exposes two PCIe
+ * links to the same chip, same as the EX3301-T0 reference board.
+ *
+ * This unit's MT7615E card has no valid factory WiFi calibration
+ * anywhere -- not in the chip's internal eFuse (empty: dmesg reports
+ * "Invalid MAC address, using random address"; iwinfo txpowerlist shows
+ * only "0 dbm (1 mW)"), and not in flash: the OEM driver's own fallback
+ * path (`&factory 0x0000`, and its own cfg_manager's secondary fallback
+ * at partition-relative offset 0x9000) both resolve to OEM F-Secure
+ * "SENSE SDK" filesystem data, not calibration data -- confirmed by
+ * reading those exact offsets directly via the bootloader (`ATRF`,
+ * bypassing Linux/UBI entirely). This board has no onboard SPI eeprom
+ * chip either (no i2c/spi node, no bitbang-eeprom code in the OEM
+ * driver) -- the OEM driver falls back to the same internal-eFuse
+ * mechanism mainline mt76 does. This matches a documented, known
+ * MT7615E issue class (some MT7615E mPCIe cards ship with no onboard
+ * eeprom at all) -- see
+ * https://tmshlvck.github.io/blog/2025/12/04/2025-12-mt7615e-eeprom-bpir4/
+ * and https://forum.openwrt.org/t/unsupported-sercomm-rp324-c-mt7615-low-tx-power-incomplete-eeprom-calibration-issue/248792 --
+ * not something specific to a wrong partition offset on this board.
+ *
+ * FIX: since there is no real per-unit calibration to recover, load a
+ * known-good GENERIC MT7615 eeprom image inline via
+ * mediatek,eeprom-data (chip-id 0x7615 verified at offset 0, sourced
+ * from the blog above) instead of pointing at flash. This gives normal
+ * TX power / RX sensitivity instead of the ~1mW/random-MAC safe
+ * defaults, at the cost of not being this unit's individual factory
+ * calibration. Both radios share the same generic blob (identical
+ * calibration data at the same eeprom offsets), so each gets an
+ * explicit local-mac-address override instead of the eeprom's built-in
+ * MAC, taken from this unit's REAL factory-assigned block (from
+ * bootloader `ATSH`: Serial <YOUR-SERIAL>, First MAC AABBCCDDEE10, Last
+ * MAC AABBCCDDEE1F, 16 addresses) so both radios get distinct,
+ * genuinely-this-unit's MAC addresses instead of colliding or random
+ * ones. Replace both the eeprom blob and the MAC addresses with your
+ * own unit's, if it has them -- this generic blob is only needed for
+ * cards with no calibration of their own.
+ */
+&pcie0 {
+	status = "okay";
+};
+
+&slot0 {
+	status = "okay";
+
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		big-endian;
+		local-mac-address = [AA BB CC DD EE 10];
+		mediatek,eeprom-data = /bits/ 8 <MT7615_GENERIC_EEPROM>;
+	};
+};
+
+&pcie1 {
+	status = "okay";
+
+	/* Second link to the same wifi chip */
+};
+
+&slot1 {
+	status = "okay";
+
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		big-endian;
+		local-mac-address = [AA BB CC DD EE 11];
+		mediatek,eeprom-data = /bits/ 8 <MT7615_GENERIC_EEPROM>;
+	};
+};
+
+/*
+ * Ethernet bring-up. gmac0 (LAN switch's CPU port, fixed-link, no PHY) is
+ * confirmed working end-to-end on real hardware (ping + SSH over LAN1-4).
+ *
+ * gmac1 (ETHWAN) is now enabled too, but UNVERIFIED on hardware -- the
+ * econet-eth driver does no PHY/link management at all (see en751627.dtsi
+ * for the full explanation), so this is a pure gamble on the external WAN
+ * PHY autonegotiating on its own once reset is released. Test with a cable
+ * in the dedicated ETHWAN port specifically (not LAN1-4). If the "nas10"
+ * interface (eth1) doesn't come up / pass traffic, the WAN PHY likely needs
+ * a GPIO reset line released or actual MDIO init that this driver doesn't
+ * do -- no schematic/GPIO info for this found in device-research yet.
+ */
+&gmac0 {
+	status = "okay";
+	/*
+	 * No local-mac-address override: AA:BB:CC:DD:EE:10 is already used
+	 * by wifi slot0 and AA:BB:CC:DD:EE:11 by slot1 (see above) -- both
+	 * match this unit's real factory MAC block per bootloader ATSH.
+	 * gmac0 gets whatever the driver/kernel assigns by default for this
+	 * first link test; assign a real LAN MAC (e.g. AA:BB:CC:DD:EE:30,
+	 * from the same factory-assigned block) once this is wired to
+	 * actual LAN traffic.
+	 */
+};
+
+&gmac1 {
+	status = "okay";
+};

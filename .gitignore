@@ -1,0 +1,12 @@
+# Python cruft
+__pycache__/
+*.pyc
+
+# Editor/tool cruft
+.claude/
+.serena/
+
+# Never commit real secrets if you re-add local scratch files
+keys.txt
+logging.txt
+*.session

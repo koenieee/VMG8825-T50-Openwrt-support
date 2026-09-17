@@ -1,0 +1,23 @@
+--- a/econet_eth.c
++++ b/econet_eth.c
+@@ -431,9 +431,20 @@
+ 	.dscp_byte_swap = false,
+ };
+ 
++/*
++ * EN751627 (EN7516/EN7527 family, e.g. Zyxel VMG8825-T50). Register layout
++ * for the FE/GDM/QDMA block matches EN751221 (same struct en751221_regs);
++ * dscp_byte_swap is UNVERIFIED on real hardware and copied from EN751221 as
++ * the closer relative -- confirm with a DSCP-marked packet capture.
++ */
++static const struct en75_soc_data en751627_soc_data = {
++	.dscp_byte_swap = true,
++};
++
+ static const struct of_device_id of_en75_match[] = {
+ 	{ .compatible = "econet,en751221-eth", .data = &en751221_soc_data },
+ 	{ .compatible = "econet,en7528-eth", .data = &en7528_soc_data },
++	{ .compatible = "econet,en751627-eth", .data = &en751627_soc_data },
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(of, of_en75_match);

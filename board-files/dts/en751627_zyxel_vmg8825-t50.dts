@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/dts-v1/;
+
+#include "en751627.dtsi"
+
+/ {
+	model = "Zyxel VMG8825-T50";
+	compatible = "zyxel,vmg8825-t50", "econet,en751627";
+
+	memory@0 {
+		device_type = "memory";
+		/*
+		 * OEM bootlog: DRAM size=512MB, but vendor kernel only saw
+		 * ~432MB (rest reserved). Start conservative at 256MB like the
+		 * EX3301-T0 reference; bump to 0x1c000000 (448MB) or 0x20000000
+		 * (512MB) ONLY after confirming what your zloader/kernel maps.
+		 */
+		reg = <0x00000000 0x10000000>;
+	};
+
+	chosen {
+		stdout-path = "/serial@1fbf0000:115200";
+	};
+};
+
+&nand {
+	status = "okay";
+	econet,bmt;
+
+	/*
+	 * Winbond W25M02GV = 2Gb / 256MiB SPI NAND (SLC).
+	 *
+	 * !!! VERIFY BEFORE FLASHING !!!
+	 * The layout below is DERIVED from the OEM mtdparts string on the
+	 * OpenWrt wiki:
+	 *   0[bootloader],0[romfile],56M[tclinux],-[tclinux_slave],
+	 *   1M[wwan],4M[data],1M[rom-d],118M[misc]
+	 * ...but the exact byte offsets are NOT yet confirmed on real hardware.
+	 * Get a root shell (ThomasRinsma/vmg8825scripts), then run:
+	 *   cat /proc/mtd
+	 *   dmesg | grep -i -E 'mtd|partition|nand'
+	 * and replace every reg=<> below with the real offsets/sizes.
+	 */
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0all {
+			label = "all_of_flash";
+			reg = <0x0 0x10000000>;	/* full 256MiB */
+			read-only;
+		};
+
+		partition@0 {
+			label = "bootloader";
+			reg = <0x0 0x40000>;
+			read-only;
+		};
+
+		partition@40000 {
+			label = "romfile";
+			reg = <0x40000 0x40000>;
+			read-only;
+		};
+
+		partition@80000 {
+			label = "tclinux";
+			reg = <0x80000 0x3800000>;	/* 56MiB image slot */
+			read-only;
+			econet,enable-remap;
+		};
+
+		/* Nested rootfs inside tclinux (kernel + squashfs) */
+		partition@480000 {
+			label = "rootfs";
+			reg = <0x480000 0x3400000>;
+			linux,rootfs;
+			read-only;
+		};
+
+		partition@3880000 {
+			label = "tclinux_slave";
+			reg = <0x3880000 0x3800000>;
+		};
+
+		partition@7080000 {
+			label = "wwan";
+			reg = <0x7080000 0x100000>;
+		};
+
+		partition@7180000 {
+			label = "data";
+			reg = <0x7180000 0x400000>;
+		};
+
+		partition@7580000 {
+			label = "rom-d";
+			reg = <0x7580000 0x100000>;
+		};
+
+		factory: partition@7680000 {
+			label = "factory";
+			reg = <0x7680000 0x80000>;
+		};
+
+		partition@7700000 {
+			label = "misc";
+			reg = <0x7700000 0x8900000>;	/* remainder (~137MiB) */
+		};
+	};
+};
+
+/*
+ * WiFi: OEM wiki lists MediaTek MT7615 (Wi-Fi 5, dual-band), PCIe-attached
+ * (ra0-ra3 / rai0-rai3 in the vendor log). The EN751627 exposes two PCIe
+ * links to the same chip, same as the EX3301-T0 reference board.
+ * Caldata lives in the "factory" MTD partition (offsets 0x0 / and a second
+ * band offset in the OEM image — confirm with the real EEPROM dump).
+ */
+&pcie0 {
+	status = "okay";
+};
+
+&slot0 {
+	status = "okay";
+
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		mediatek,mtd-eeprom = <&factory 0x0000>;
+		big-endian;
+	};
+};
+
+&pcie1 {
+	status = "okay";
+
+	/* Second link to the same wifi chip */
+};

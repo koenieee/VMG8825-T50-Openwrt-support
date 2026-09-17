@@ -74,6 +74,46 @@ via a netboot session, see `bldr-patch/netboot.py`).
   per-port VLAN control from Linux). Same approach as
   `en751221_tplink_archer-vr1200v-v2.dts`.
 
+### LAN throughput (measured, 2026-09-17)
+
+First real throughput numbers for LAN (previously only ping-confirmed).
+Measured with `iperf3` between a single LAN-connected host and the
+router, gigabit link on both ends, one TCP stream unless noted:
+
+| Test                          | Result                                  |
+|--------------------------------|------------------------------------------|
+| Sustained ping, 200 packets     | 0% loss, 0.17–0.5 ms RTT                 |
+| TCP, host → router              | ~525 Mbit/s, ~230 retransmits/10s        |
+| TCP, router → host (reverse)    | ~350–410 Mbit/s, 0 retransmits           |
+| TCP, 4 parallel streams          | ~350 Mbit/s combined (no better than 1 stream) |
+| UDP, 100 Mbit/s target           | 100 Mbit/s achieved, 0.014% loss, ~0.01 ms jitter |
+
+Stable under load (no crashes, no drops at moderate UDP rate), but the
+TCP ceiling sits well under gigabit line rate, with retransmits
+appearing specifically on the higher-throughput (host→router)
+direction. Reads as a CPU/interrupt-handling bottleneck on this
+single-/dual-core embedded SoC rather than a PHY or switch-config
+problem, but that's an interpretation, not confirmed via profiling —
+worth revisiting if someone wants to chase real gigabit LAN throughput.
+
+**Getting `iperf3` onto the device at all was its own small saga**,
+worth documenting since it'll bite the next person too: this OpenWrt
+snapshot uses `apk`, not the older `opkg`, and `apk update`/`apk add`
+partially fail because the target-specific package feed
+(`targets/econet/en751627/packages/packages.adb`) 404s upstream — this
+target isn't (yet) building official target-specific binary packages.
+That feed is where an architecture-specific dependency (`libatomic1`
+for `libiperf3`) lives, so a plain `apk add iperf3` fails on a missing
+dependency that simply isn't published anywhere reachable. Worked
+around by cross-compiling `iperf3` locally from the already-checked-out
+`openwrt/` + `openwrt-overlay/` tree (`make package/iperf3/{clean,compile}`)
+and copying the resulting binary plus `libiperf.so`/`libatomic.so`
+straight onto the device's writable overlay over SSH (`scp` doesn't
+work — dropbear here has no `sftp-server`; pipe the file through
+`ssh ... "cat > /path"` instead). This is a one-off, not persisted in
+the shipped image — expect to redo it (or add `iperf3` to
+`DEVICE_PACKAGES` and rebuild) if you need it again after a reflash.
+
 ## Writable overlay partition placement
 
 The persistent `/overlay` volume (`rootfs_data`) lives on its own MTD
@@ -104,6 +144,35 @@ give `rootfs_data` a healthy margin above the 17-LEB minimum.
 Both MT7615 radios default to `5g`. Both chips also support 2.4 GHz
 (`iw phy phyN info`) — set one to `2g` in `/etc/config/wireless` for real
 dual-band coverage instead of two overlapping 5 GHz APs.
+
+### Client-mode (STA) radio hang, observed under real use (2026-09-17)
+
+One radio was configured as a WiFi client (STA mode, joining an
+existing home AP) to give the device an internet route for testing.
+Association and DHCP worked fine initially, but roughly 13 minutes into
+uptime the radio produced a kernel warning:
+
+```
+WARNING: ... __ieee80211_stop_tx_ba_session+0x210/0x2a8 [mac80211]
+```
+
+immediately followed by continuous, recurring firmware-communication
+timeouts from the mt7615e driver (`Message 0000XXed (seq N) timeout`,
+roughly every 20 seconds, indefinitely — never recovered on its own).
+The practical symptom was severe: even `ip link show`/`ip addr show`
+(which enumerate *all* net devices, not just the wifi ones) started
+hanging indefinitely, which looks like the kernel blocking on a lock
+held by the wedged firmware-command path.
+
+A fresh reboot recovered it immediately (STA re-associated fine, no
+repeat within the shorter test window that followed) — so this reads as
+a firmware/driver stability issue under sustained STA-mode operation,
+not a permanent fault. Only observed once, only in STA mode, only after
+sustained runtime, and not correlated with a specific trigger (no
+heavy traffic on that radio at the time) — needs a longer, deliberate
+soak test to characterize (does it always happen around ~13 minutes?
+Is it STA-mode specific, or would a busy AP-mode radio hit the same
+firmware bug?) rather than a real fix yet.
 
 ## Dev loop
 

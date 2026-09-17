@@ -10,3 +10,5 @@ __pycache__/
 keys.txt
 logging.txt
 *.session
+.env
+bldr-patch/*.log

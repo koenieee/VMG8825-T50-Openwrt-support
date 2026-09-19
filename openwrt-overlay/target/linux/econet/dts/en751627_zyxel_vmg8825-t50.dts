@@ -87,16 +87,22 @@
 			read-only;
 		};
 
-		partition@0 {
+		bootloader_part: partition@0 {
 			label = "bootloader";
 			reg = <0x0 0x40000>;
-			/* Deliberately NOT read-only: needed so a booted OpenWrt
+			/* Deliberately NOT read-only here: needed so a booted OpenWrt
 			 * userspace can nandwrite a patched zloader stage2 here
 			 * (CRC-compare bypass patch, see BOOTLOADER-PATCH.md
 			 * and bldr-patch/patch_stage2_crc_bypass.py). ONLY ever
 			 * written deliberately, from a booted shell, with a
 			 * pre-write backup + post-write readback/md5 verify -- see
 			 * install-guide/README.md §4 before touching this.
+			 *
+			 * This is the "unlocked"/installer variant used ONLY to
+			 * apply that one patch. Once it's applied, reflash the
+			 * "-locked" device variant (en751627_zyxel_vmg8825-t50-locked.dts)
+			 * instead, which overrides this node back to read-only --
+			 * see install-guide/README.md SS7a.
 			 */
 		};
 

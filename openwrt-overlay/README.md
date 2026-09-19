@@ -31,8 +31,13 @@ cp -r openwrt-overlay/package/kernel/econet-eth/* openwrt/package/kernel/econet-
 - `dts/en751627_zyxel_vmg8825-t50.dts` — the board devicetree: MT7615
   WiFi (both radios), USB, the `rootfs_data` partition node, `gmac0`
   (LAN) and `gmac1` (ETHWAN) enabled, and the `bootloader` partition
-  node without `read-only;` (needed once to apply the bootloader patch
-  from `BOOTLOADER-PATCH.md`; can be set back to read-only afterwards).
+  node (labelled `bootloader_part`) left writable — needed once to apply
+  the bootloader patch from `BOOTLOADER-PATCH.md`.
+- `dts/en751627_zyxel_vmg8825-t50-locked.dts` — `#include`s the above and
+  overrides `&bootloader_part` back to `read-only;`. Builds as the
+  separate `zyxel_vmg8825-t50-locked` device (see `image/en751627.mk`);
+  reflash to this one once the bootloader patch is applied and verified —
+  see `install-guide/README.md` §7a.
 - `dts/en751627_zyxel_vmg8825-t50-mt7615-eeprom.dtsi` — a generic
   MT7615 calibration blob wired in via `mediatek,eeprom-data`, for
   boards whose radio has no factory calibration in eFuse or flash.

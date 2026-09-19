@@ -1,0 +1,350 @@
+# Full serial capture: ATGO -> zloader -> kernel boot -> OpenWrt userspace,
+# on the zyxel_vmg8825-t50-locked build (mtd1 read-only, patched bootloader).
+# Captured 2026-09-20 with bldr-patch/dev_flash_cycle.py.
+#
+# Redacted: the build-host string in the kernel version banner
+# (build-host user@hostname -> builduser@buildhost), and the real MAC of a
+# nearby AP the test radio associated to during the WiFi check.
+# Everything else is verbatim, including the per-boot random MAC addresses
+# (no static-MAC override is set for LAN/WAN on this variant).
+#
+BGA IC
+Xtal:1
+DDR3 init.
+DRAMC init done. 
+Calculate size.
+DRAM size=512MB
+Set new TRFC.
+ddr-1333
+
+7516DRAMC V1.0 (0)
+Press 'x' or 'b' key in 1 secs to enter or skip bootloader upgrade.
+
+
+EN751627 at Mon Jan 4 14:53:36 CST 2021 version 1.1 free bootbase
+
+Set SPI Clock to 50 Mhz
+spi_nand_probe: mfr_id=0xef, dev_id=0xab
+Using Flash ECC.
+Detected SPI NAND Flash : _SPI_NAND_DEVICE_ID_W25M02G, Flash Size=0x10000000
+bmt pool size: 163 
+BMT & BBT Init Success 
+
+
+
+ZyXEL zloader v1.4.4 (01/04/2021 - 14:53:34)
+Multiboot client version: 2.4
+Not found TC Phy
+Not found TC Phy
+Not found TC Phy
+Not found TC Phy
+Not found TC Phy
+  GE Rext AnaCal Done! (8)(0x18)  
+
+Hit any key to stop autoboot:  5
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> ATSE VMG8825-T50
+0A00A10B09B00C10C00D00D00E00EA01D002
+ZHAL> ATEN 1,21238075263292035049394279716
+ZHAL> ATLD devfw.bin
+TFTP server is started, put your file 'devfw.bin' to server (IP is 192.168.1.1).
+.............................................................................................................................................................................................................................................................................................................
+Total 9830912 (0x960200) bytes received
+
+File download to memory address 0x80020000, length is 9830912
+ZHAL> ATER 4,451
+ZHAL> ATWF 0x80020000,0x80000,0x960200
+[DEBUG] Write len=9830912 from ram=0x80020000 to flash=0x00080000 
+................................................................................................................................................................................................................................................ZHAL> ATSE VMG8825-T50
+0A00A10B09B00C10C00D00D00EE0E3017006
+ZHAL> ATEN 1,275525053133759772204114174918
+ZHAL> ATGO
+
+ main tclinux.bin have ZYXEL trx header!
+
+ main tclinux.bin Start to decrypt RSA!
+
+==> boot flag = 0
+from main
+Decompress to 80002000 free_mem_ptr=80950000 free_mem_ptr_end=807B0000
+Uncompressing [LZMA] ...  done.
+zimage at:     800053C0 80328004
+Uncompressing Linux at load address 81000000
+Copy device tree to address  81A92820
+Now, booting the kernel...
+[    0.000000] Linux version 6.18.52 (builduser@buildhost) (mips-openwrt-linux-musl-gcc (OpenWrt GCC 14.4.0 r0-928cd26) 14.4.0, GNU ld (GNU Binutils) 2.46.1) #0 SMP Thu Sep 17 09:15:04 2026
+[    0.000000] printk: legacy bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is Zyxel VMG8825-T50
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] OF: reserved mem: Reserved memory: No reserved-memory node in the DT
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] percpu: Embedded 12 pages/cpu s18448 r8192 d22512 u49152
+[    0.000000] Kernel command line: ubi.mtd=ubi ubi.mtd=rootfs_data
+[    0.000000] printk: log buffer data + meta data: 131072 + 409600 = 540672 bytes
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Writing ErrCtl register=0007412f
+[    0.000000] Readback ErrCtl register=0007412f
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 65536
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] 	Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] RCU Tasks Trace: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=4.
+[    0.000000] NR_IRQS: 256
+[    0.000000] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[    0.000000] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.000000] clocksource: timer: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 9556302233 ns
+[    0.000004] sched_clock: 32 bits at 200MHz, resolution 5ns, wraps every 10737418237ns
+[    0.008528] timer: using 200.000 MHz high precision timer (separate IRQ mode)
+[    0.016644] Calibrating delay loop... 597.60 BogoMIPS (lpj=2988032)
+[    0.083331] pid_max: default: 32768 minimum: 301
+[    0.098991] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.106981] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.132364] rcu: Hierarchical SRCU implementation.
+[    0.137639] rcu: 	Max phase no-delay instances is 1000.
+[    0.144502] smp: Bringing up secondary CPUs ...
+[    0.150381] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.150409] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.150424] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.150551] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.152478] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.152504] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.152517] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.152625] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.162815] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.162842] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.162856] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.162970] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.163154] smp: Brought up 1 node, 4 CPUs
+[    0.252102] Memory: 245572K/262144K available (8297K kernel code, 641K rwdata, 1668K rodata, 1288K init, 225K bss, 14920K reserved, 0K cma-reserved)
+[    0.270842] posixtimers hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.279119] futex hash table entries: 1024 (32768 bytes on 1 NUMA nodes, total 32 KiB, linear).
+[    0.297938] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.308169] /pcie@1fb81000: Fixed dependency cycle(s) with /pcie@1fb81000/interrupt-controller
+[    0.318237] /pcie@1fb83000: Fixed dependency cycle(s) with /pcie@1fb83000/interrupt-controller
+[    0.337751] usbcore: registered new interface driver usbfs
+[    0.343770] usbcore: registered new interface driver hub
+[    0.349625] usbcore: registered new device driver usb
+[    0.356656] clocksource: Switched to clocksource timer
+[    0.372420] NET: Registered PF_INET protocol family
+[    0.378009] IP idents hash table entries: 4096 (order: 3, 32768 bytes, linear)
+[    0.387262] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.396385] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.404911] TCP established hash table entries: 2048 (order: 1, 8192 bytes, linear)
+[    0.413346] TCP bind hash table entries: 2048 (order: 3, 32768 bytes, linear)
+[    0.421290] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.428927] MPTCP token hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.437196] UDP hash table entries: 256 (order: 2, 14336 bytes, linear)
+[    0.444422] UDP-Lite hash table entries: 256 (order: 2, 14336 bytes, linear)
+[    0.453197] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.459459] PCI: CLS 0 bytes, default 32
+[    0.466812] workingset: timestamp_bits=14 max_order=16 bucket_order=2
+[    0.476969] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.490424] mtk-pcie 1fb81000.pcie: host bridge /pcie@1fb81000 ranges:
+[    0.497751] mtk-pcie 1fb81000.pcie:       IO 0x001f600000..0x001f60ffff -> 0x0000000000
+[    0.506545] mtk-pcie 1fb81000.pcie:      MEM 0x0020000000..0x0027ffffff -> 0x0020000000
+[    1.046136] mtk-pcie 1fb81000.pcie: PCI host bridge to bus 0000:00
+[    1.052938] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    1.058918] pci_bus 0000:00: root bus resource [io  0x0000-0xffff]
+[    1.065673] pci_bus 0000:00: root bus resource [mem 0x20000000-0x27ffffff]
+[    1.073567] pci 0000:00:00.0: [14c3:0810] type 01 class 0x060400 PCIe Root Port
+[    1.081837] pci 0000:00:00.0: PCI bridge to [bus 00]
+[    1.087311] pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff]
+[    1.096660] pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    1.106258] pci 0000:01:00.0: [14c3:7615] type 00 class 0x000280 PCIe Endpoint
+[    1.114611] pci 0000:01:00.0: BAR 0 [mem 0x00000000-0x000fffff 64bit]
+[    1.122500] pci 0000:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe x1 link at 0000:00:00.0 (capable of 4.000 Gb/s with 5.0 GT/s PCIe x1 link)
+[    1.139215] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[    1.144923] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    1.152238] pci 0000:00:00.0: bridge window [mem 0x20000000-0x200fffff]: assigned
+[    1.160420] pci 0000:01:00.0: BAR 0 [mem 0x20000000-0x200fffff 64bit]: assigned
+[    1.168518] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    1.173922] pci 0000:00:00.0:   bridge window [mem 0x20000000-0x200fffff]
+[    1.181421] pci_bus 0000:00: resource 4 [io  0x0000-0xffff]
+[    1.187501] pci_bus 0000:00: resource 5 [mem 0x20000000-0x27ffffff]
+[    1.194336] pci_bus 0000:01: resource 1 [mem 0x20000000-0x200fffff]
+[    1.216697] pci 0000:00:00.0: link retrained, speed 5.0 GT/s PCIe
+[    1.223875] mtk-pcie 1fb83000.pcie: host bridge /pcie@1fb83000 ranges:
+[    1.231092] mtk-pcie 1fb83000.pcie:       IO 0x001f610000..0x001f61ffff -> 0x0000000000
+[    1.239857] mtk-pcie 1fb83000.pcie:      MEM 0x0028000000..0x002fffffff -> 0x0028000000
+[    1.386119] mtk-pcie 1fb83000.pcie: PCI host bridge to bus 0001:00
+[    1.392928] pci_bus 0001:00: root bus resource [bus 00-ff]
+[    1.398912] pci_bus 0001:00: root bus resource [mem 0x28000000-0x2fffffff]
+[    1.406772] pci 0001:00:01.0: [14c3:0811] type 01 class 0x060400 PCIe Root Port
+[    1.415016] pci 0001:00:01.0: PCI bridge to [bus 00]
+[    1.420489] pci 0001:00:01.0:   bridge window [mem 0x00000000-0x000fffff]
+[    1.429804] pci 0001:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    1.439385] pci 0001:01:00.0: [14c3:7615] type 00 class 0x000280 PCIe Endpoint
+[    1.447744] pci 0001:01:00.0: BAR 0 [mem 0x00000000-0x000fffff 64bit]
+[    1.455608] pci 0001:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe x1 link at 0001:00:01.0 (capable of 4.000 Gb/s with 5.0 GT/s PCIe x1 link)
+[    1.472330] pci 0001:00:01.0: PCI bridge to [bus 01-ff]
+[    1.478065] pci_bus 0001:01: busn_res: [bus 01-ff] end is updated to 01
+[    1.485324] pci 0001:00:01.0: bridge window [mem 0x28000000-0x280fffff]: assigned
+[    1.493504] pci 0001:01:00.0: BAR 0 [mem 0x28000000-0x280fffff 64bit]: assigned
+[    1.501604] pci 0001:00:01.0: PCI bridge to [bus 01]
+[    1.507030] pci 0001:00:01.0:   bridge window [mem 0x28000000-0x280fffff]
+[    1.514498] pci_bus 0001:00: resource 4 [mem 0x28000000-0x2fffffff]
+[    1.521320] pci_bus 0001:01: resource 1 [mem 0x28000000-0x280fffff]
+[    1.546695] pci 0001:00:01.0: link retrained, speed 5.0 GT/s PCIe
+[    1.554594] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    1.563649] printk: legacy console [ttyS0] disabled
+[    1.569827] 1fbf0000.serial: ttyS0 at MMIO 0x1fbf0000 (irq = 22, base_baud = 460800) is a Airoha 16550
+[    1.580104] printk: legacy console [ttyS0] enabled
+[    1.580104] printk: legacy console [ttyS0] enabled
+[    1.590099] printk: legacy bootconsole [early0] disabled
+[    1.590099] printk: legacy bootconsole [early0] disabled
+[    1.608001] spi-nand spi0.0: Winbond SPI NAND was found.
+[    1.613362] spi-nand spi0.0: 256 MiB, block size: 128 KiB, page size: 2048, OOB size: 64
+[    1.622568] en75_bmt: found BMT in block 2047
+[    1.696541] en75_bmt: enable-remap set for /spi@1fa10000/nand@0/partitions/partition@80000
+[    1.704914] en75_bmt: BBT not found and econet,can-write-factory-bbt is unset, giving up
+[    1.713534] 11 fixed-partitions partitions found on MTD device spi0.0
+[    1.720052] Creating 11 MTD partitions on "spi0.0":
+[    1.724952] 0x000000000000-0x000010000000 : "all_of_flash"
+[    2.354542] 0x000000000000-0x000000040000 : "bootloader"
+[    2.360987] 0x000000040000-0x000000080000 : "romfile"
+[    2.367136] 0x000000080000-0x000003880000 : "tclinux"
+[    2.373667] 0x000000480000-0x000003880000 : "ubi"
+[    2.379828] 0x000003880000-0x000006ee0000 : "tclinux_slave"
+[    2.386896] 0x000006ee0000-0x000006fe0000 : "wwan"
+[    2.392712] 0x000006fe0000-0x0000073e0000 : "data"
+[    2.398857] 0x0000073e0000-0x0000074e0000 : "rom-d"
+[    2.404864] 0x0000074e0000-0x0000098e0000 : "reservearea"
+[    2.411669] 0x0000098e0000-0x00000eae0000 : "rootfs_data"
+[    2.432442] phy phy-1fa80000.usb-phy.0: frequency meter result 0x91, set slew rate 0x4
+[    2.441992] xhci-mtk 1fb90000.usb: xHCI Host Controller
+[    2.447299] xhci-mtk 1fb90000.usb: new USB bus registered, assigned bus number 1
+[    2.455009] xhci-mtk 1fb90000.usb: hcc params 0x01401198 hci version 0x96 quirks 0x0000000000280810
+[    2.464228] xhci-mtk 1fb90000.usb: irq 23, io mem 0x1fb90000
+[    2.470254] xhci-mtk 1fb90000.usb: xHCI Host Controller
+[    2.475544] xhci-mtk 1fb90000.usb: new USB bus registered, assigned bus number 2
+[    2.483027] xhci-mtk 1fb90000.usb: Host supports USB 3.0 SuperSpeed
+[    2.490363] hub 1-0:1.0: USB hub found
+[    2.494248] hub 1-0:1.0: 2 ports detected
+[    2.500170] hub 2-0:1.0: USB hub found
+[    2.504041] hub 2-0:1.0: 1 port detected
+[    2.511437] NET: Registered PF_INET6 protocol family
+[    2.519701] Segment Routing with IPv6
+[    2.523489] In-situ OAM (IOAM) with IPv6
+[    2.527652] NET: Registered PF_PACKET protocol family
+[    2.532784] 8021q: 802.1Q VLAN Support v1.8
+[    2.564328] ubi0: attaching mtd4
+[    2.601648] UBI: EOF marker found, PEBs from 38 will be erased
+[    2.607972] ubi0: scanning is finished
+[    2.688016] ubi0: attached mtd4 (name "ubi", size 52 MiB)
+[    2.693465] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    2.700423] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    2.707288] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    2.714268] ubi0: good PEBs: 416, bad PEBs: 0, corrupted PEBs: 0
+[    2.720318] ubi0: user volume: 1, internal volumes: 1, max. volumes count: 128
+[    2.727593] ubi0: max/mean erase counter: 0/0, WL threshold: 4096, image sequence number: 1789636504
+[    2.736771] ubi0: available PEBs: 350, total reserved PEBs: 66, PEBs reserved for bad PEB handling: 26
+[    2.746128] ubi0: background thread "ubi_bgt0d" started, PID 337
+[    2.748653] block ubiblock0_0: created from ubi0:0(rootfs)
+[    2.757753] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    2.764806] ubi1: attaching mtd10
+[    2.996908] usb 1-2: new high-speed USB device number 2 using xhci-mtk
+[    3.890226] ubi1: scanning is finished
+[    3.906072] ubi1: attached mtd10 (name "rootfs_data", size 82 MiB)
+[    3.912372] ubi1: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    3.919288] ubi1: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    3.926091] ubi1: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    3.933095] ubi1: good PEBs: 656, bad PEBs: 0, corrupted PEBs: 0
+[    3.939148] ubi1: user volume: 1, internal volumes: 1, max. volumes count: 128
+[    3.946386] ubi1: max/mean erase counter: 2/1, WL threshold: 4096, image sequence number: 1149877678
+[    3.955559] ubi1: available PEBs: 0, total reserved PEBs: 656, PEBs reserved for bad PEB handling: 26
+[    3.964855] ubi1: background thread "ubi_bgt1d" started, PID 345
+[    3.966449] clk: Disabling unused clocks
+[    3.975263] check access for rdinit=/init failed: -2, ignoring
+[    3.989407] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    4.000397] Freeing unused kernel image (initmem) memory: 1288K
+[    4.006372] This architecture does not have kernel memory protection.
+[    4.012940] Run /sbin/init as init process
+[    4.627032] init: Console is alive
+[    5.375986] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.422043] gpio_button_hotplug: loading out-of-tree module taints kernel.
+[    5.434040] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    5.451018] init: - preinit -
+[    7.236666] random: crng init done
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   11.596524] UBIFS (ubi1:0): Mounting in unauthenticated mode
+[   11.602679] UBIFS (ubi1:0): background thread "ubifs_bgt1_0" started, PID 448
+[   11.661505] UBIFS (ubi1:0): recovery needed
+[   11.787344] UBIFS (ubi1:0): recovery completed
+[   11.791994] UBIFS (ubi1:0): UBIFS: mounted UBI device 1, volume 0, name "rootfs_data"
+[   11.799878] UBIFS (ubi1:0): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   11.809836] UBIFS (ubi1:0): FS size: 78217216 bytes (74 MiB, 616 LEBs), max 626 LEBs, journal size 3936256 bytes (3 MiB, 31 LEBs)
+[   11.821541] UBIFS (ubi1:0): reserved for root: 3694391 bytes (3607 KiB)
+[   11.828208] UBIFS (ubi1:0): media format: w5/r0 (latest is w5/r0), UUID 4EDE4A47-D030-4806-BD91-F55AAB597AD8, small LPT model
+[   11.848106] mount_root: switching to ubifs overlay
+[   11.872020] urandom-seed: Seeding with /etc/urandom.seed
+[   12.047542] procd: - early -
+[   12.619327] procd: - ubus -
+[   12.721355] procd: - init -
+Please press Enter to activate this console.
+[   13.919571] kmodloader: loading kernel modules from /etc/modules.d/*
+[   14.505528] i2c_dev: i2c /dev entries driver
+[   14.545472] econet_eth 1fb50000.ethernet: generated random MAC address ca:04:d5:96:0a:c5
+[   14.555810] urngd: v1.0.2 started.
+[   14.610697] econet_eth 1fb50000.ethernet: port 1 (LAN) registered with ca:04:d5:96:0a:c5
+[   14.619655] econet_eth 1fb50000.ethernet: generated random MAC address 66:1d:47:e3:f8:30
+[   14.764766] econet_eth 1fb50000.ethernet: port 2 (WAN) registered with 66:1d:47:e3:f8:30
+[   14.792743] Loading modules backported from Linux version v7.2-0-g8d3ae59288f1
+[   14.800077] Backport generated by backports.git v5.15.58-1-198-g2580fa90cb79
+[   15.097452] pci 0000:00:00.0: enabling device (0000 -> 0002)
+[   15.103242] mt7615e 0000:01:00.0: enabling device (0000 -> 0002)
+[   15.115505] mt7615e 0000:01:00.0: registering led 'mt76-phy0'
+[   15.192224] pci 0001:00:01.0: enabling device (0000 -> 0002)
+[   15.198131] mt7615e 0001:01:00.0: enabling device (0000 -> 0002)
+[   15.214417] mt7615e 0001:01:00.0: registering led 'mt76-phy1'
+[   15.346898] mt7615e 0000:01:00.0: HW/SW Version: 0x8a108a10, Build Time: 20180518100604a
+[   15.346898] 
+[   15.417250] mt7615e 0001:01:00.0: HW/SW Version: 0x8a108a10, Build Time: 20180518100604a
+[   15.417250] 
+[   15.514927] PPP generic driver version 2.4.2
+[   15.523682] NET: Registered PF_PPPOX protocol family
+[   15.549539] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   15.599713] mt7615e 0000:01:00.0: N9 Firmware Version: _reserved_, Build Time: 20200814163649
+[   15.608567] mt7615e 0001:01:00.0: N9 Firmware Version: _reserved_, Build Time: 20200814163649
+[   15.634528] mt7615e 0001:01:00.0: CR4 Firmware Version: _reserved_, Build Time: 20190415154149
+[   15.643641] mt7615e 0000:01:00.0: CR4 Firmware Version: _reserved_, Build Time: 20190415154149
+[   22.379593] br-lan: port 1(eth0) entered blocking state
+[   22.384946] br-lan: port 1(eth0) entered disabled state
+[   22.390526] econet_eth 1fb50000.ethernet eth0: entered allmulticast mode
+[   22.397959] econet_eth 1fb50000.ethernet eth0: entered promiscuous mode
+[   22.412670] br-lan: port 1(eth0) entered blocking state
+[   22.418099] br-lan: port 1(eth0) entered forwarding state
+[   24.525796] br-lan: port 2(phy1-ap0) entered blocking state
+[   24.531576] br-lan: port 2(phy1-ap0) entered disabled state
+[   24.537399] mt7615e 0001:01:00.0 phy1-ap0: entered allmulticast mode
+[   24.544321] mt7615e 0001:01:00.0 phy1-ap0: entered promiscuous mode
+[   26.085469] br-lan: port 2(phy1-ap0) entered blocking state
+[   26.091192] br-lan: port 2(phy1-ap0) entered forwarding state
+[   29.948012] phy0-sta0: authenticate with xx:xx:xx:xx:xx:xx (local address=aa:bb:cc:dd:ee:ff)
+[   29.956517] phy0-sta0: send auth to xx:xx:xx:xx:xx:xx (try 1/3)
+[   30.066698] phy0-sta0: send auth to xx:xx:xx:xx:xx:xx (try 2/3)
+[   30.078075] phy0-sta0: authenticated
+[   30.086738] phy0-sta0: associate with xx:xx:xx:xx:xx:xx (try 1/3)
+[   30.108883] phy0-sta0: RX AssocResp from xx:xx:xx:xx:xx:xx (capab=0x1511 status=0 aid=10)
+[   30.118471] phy0-sta0: associated

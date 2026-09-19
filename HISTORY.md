@@ -129,3 +129,33 @@ added on top. It changes nothing about *how* the write happens or how
 safe it is — same commands, same no-fallback risk on mtd1 — it just saves
 typing them out. Flashing the bootloader at all is still, and remains, an
 explicit choice.
+
+## Finding the script's own bug, and closing mtd1 back up
+
+Live-testing that installer script (rather than just reading it) turned
+up a real bug: its writable-check compared `mtdinfo`'s actual lowercase
+"Device is writable:  true" against a capital-W pattern, so it never
+matched — the script always aborted with a false "not writable" error
+before touching flash. Fixed and reverified end-to-end against a rebuilt
+image, not just a hand-patched copy: backup, erase, write, and readback
+all passed, byte-exact.
+
+While flashing MAIN this way it also became clear the earlier "Permission
+denied" seen from a booted Linux shell trying to `nandwrite` MAIN (mtd3)
+directly was never a UBI-attachment issue — mtd3 simply isn't meant to be
+written from Linux at all here; the documented route is the bootloader's
+own `ATER`/`ATWF` commands from `ZHAL>`, which is what `dev_flash_cycle.py`
+already automates.
+
+That same read-only-partition mechanism is what closes the loop on mtd1:
+a second device build, `zyxel_vmg8825-t50-locked`, marks the bootloader
+partition `read-only;` in the devicetree and drops the flashing
+binary/script from its image (there's nothing for it to do once mtd1 is
+read-only). Verified live — `mtdinfo` reports `Device is writable: false`,
+and the new image's own squashfs (`/rom/root/`) ships no bootloader files.
+One nuance worth remembering: the persistent overlay is a separate MTD
+partition (`rootfs_data`) that survives a MAIN reflash by design, so a
+unit that's been experimented on can still show old files under `/root/`
+even on a fresh image — that's the overlay, not the new squashfs.
+Recommended sequence is now: flash `-installer` once to patch the
+bootloader, then reflash `-locked` for everyday use.

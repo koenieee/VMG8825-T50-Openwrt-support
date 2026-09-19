@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/dts-v1/;
+
+/*
+ * "Day-2" variant of en751627_zyxel_vmg8825-t50.dts: identical in every
+ * way except the bootloader (mtd1) partition is read-only again.
+ *
+ * Use this (via firmware/vmg8825-t50-era-signed-locked.bin) once you've
+ * already applied the bootloader patch from BOOTLOADER-PATCH.md using
+ * the base/"-installer" variant. There is no further reason for mtd1 to
+ * be writable from Linux userspace after that, and leaving it writable
+ * is a real risk on the one partition with no fallback slot -- a stray
+ * `nandwrite`, bug, or compromised process could brick the device with
+ * no recovery but desoldering. See install-guide/README.md SS7a.
+ *
+ * If you ever need to re-patch mtd1 again (e.g. a future patch update),
+ * go back to the base "zyxel_vmg8825-t50" device build (or the
+ * `-installer` firmware image, which is that same build plus the
+ * flashing script) for that one operation, then return to this locked
+ * variant afterwards.
+ */
+#include "en751627_zyxel_vmg8825-t50.dts"
+
+&bootloader_part {
+	read-only;
+};

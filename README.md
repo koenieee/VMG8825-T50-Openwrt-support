@@ -161,11 +161,16 @@ full OpenWrt checkout:
   `build_era_trx.py` uses.
 - `tools/atenv3/` — the supervisor-password derivation tool needed for
   the bootloader's `ATSE`/`ATEN` debug-unlock.
- - `firmware/` — the two prebuilt artifacts you actually flash:
-   `vmg8825-t50-bootloader-patched.bin` (patched bootloader, mtd0) and
-   `vmg8825-t50-era-signed.bin` (OpenWrt build, ready for MAIN/mtd3).
-   Wireless is disabled by default in the OpenWrt image; no network
-   name/passphrase is baked in.
+ - `firmware/` — the prebuilt artifacts you actually flash:
+   `vmg8825-t50-bootloader-patched.bin` (patched bootloader, mtd1),
+   `vmg8825-t50-era-signed.bin` (plain OpenWrt build, MAIN/mtd3),
+   `vmg8825-t50-era-signed-installer.bin` (same, plus the §7 bootloader
+   flashing script baked in — use this one first), and
+   `vmg8825-t50-era-signed-locked.bin` (same build, but mtd1 is read-only
+   at the kernel level and the flashing script is gone — reflash to this
+   one once the bootloader patch is applied and verified; see
+   `install-guide/README.md` §7a). Wireless is disabled by default in the
+   OpenWrt image; no network name/passphrase is baked in.
 
 ## Roadmap / help wanted
 

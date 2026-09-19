@@ -43,7 +43,7 @@ if [ "$SIZE" -gt "$MTD_SIZE" ]; then
 	exit 1
 fi
 
-WRITABLE=$(mtdinfo /dev/mtd1 2>/dev/null | grep -c 'Writable.*true')
+WRITABLE=$(mtdinfo /dev/mtd1 2>/dev/null | grep -ic 'writable.*true')
 if [ "$WRITABLE" != "1" ]; then
 	echo "ERROR: /dev/mtd1 is not writable (mtdinfo). Refusing to continue." >&2
 	echo "This should not happen on this image -- the bootloader DTS node" >&2

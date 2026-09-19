@@ -227,6 +227,34 @@ reboot), last, and only after the §6 readback matched.
 > `patch_stage2_crc_bypass.py`, and use that in place of the prebuilt one
 > here — same write/verify steps. See §11 and `BOOTLOADER-PATCH.md`.
 
+## 7a. Lock mtd1 back down (recommended, do this once §7 is verified)
+
+Once the bootloader patch from §7 is written and read back verified, there
+is no more reason for `mtd1` (bootloader) to be writable from Linux at
+all — leaving it writable is a real risk on the one partition with no
+fallback slot: a stray `nandwrite`, bug, or compromised process could brick
+the device with no recovery but desoldering.
+
+The `zyxel_vmg8825-t50-locked` device build closes this off at the
+devicetree level (`read-only;` on the bootloader partition node) and its
+image doesn't ship the flashing binary/script from §6/§7 either, since
+they'd be useless with mtd1 read-only anyway:
+
+```
+firmware/vmg8825-t50-era-signed-locked.bin
+```
+
+Flash it the same way as §6 (it's a normal MAIN/mtd3 image, same fallback
+safety). After booting it, confirm the lock took:
+```
+mtdinfo /dev/mtd1
+# Device is writable:  false
+```
+
+If you ever need to re-patch mtd1 again (a future patch update), go back
+to the base `zyxel_vmg8825-t50` device build — or its `-installer` image —
+for that one operation, then reflash `-locked` afterwards.
+
 ## 8. Reboot, boot, and verify
 
 Power-cycle (or `reboot`). With the patched bootloader, MAIN now boots
@@ -240,6 +268,10 @@ from main
 followed by OpenWrt userspace and `VFS: Mounted root (squashfs filesystem)
 readonly on device 31:4.`, then a root shell (no password) on the same
 serial line.
+
+A full real capture of this, ATGO through to a working shell, is in
+[`example-boot-log.txt`](example-boot-log.txt) if you want something to
+diff your own boot against.
 
 ### 8a. If it boots the slave / `==> boot flag = 1` — clear the boot flag
 

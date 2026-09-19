@@ -307,6 +307,20 @@ guaranteed brick for this specific partition.
 > want to keep your own device's values, see `BOOTLOADER-PATCH.md` for
 > patching your own §5 backup instead of using this prebuilt file.
 
+## 7a. Lock the bootloader partition back down
+
+Once §7's readback matched, mtd1 doesn't need to stay writable from Linux
+— that's the one partition with no fallback if something ever writes to
+it by mistake. After you've booted and checked step 8 once, reflash again
+with `firmware/vmg8825-t50-era-signed-locked.bin` (same steps as §6). It's
+the same OpenWrt image but with mtd1 made read-only at the kernel level,
+and it doesn't carry the flashing files from §6/§7 either. Check it took:
+```
+mtdinfo /dev/mtd1
+```
+should say `Device is writable:  false`. See `install-guide/README.md`
+§7a for the full explanation.
+
 ## 8. Reboot and check
 
 Power-cycle the router. With the patched bootloader, it now boots MAIN

@@ -302,46 +302,35 @@ it overwrites your unit's values with placeholders. To keep your own,
 patch your own bootloader backup yourself — see the note in §7 and
 `BOOTLOADER-PATCH.md`.
 
-## Appendix: all-from-`ZHAL>` route (no Linux, faster, partly untested)
+## Appendix: all-from-`ZHAL>` route — CONFIRMED UNSAFE for the bootloader, do not use for mtd0
 
-> Full step-by-step manual for this route, including the pristine-restore
-> safety net, is in `install-guide/bootloader-flash-from-zhal.md`. The
-> summary below is the short version.
+> Full write-up, including the OOB/ECC evidence and the Ghidra
+> reverse-engineering that closed this off for good, is in
+> `install-guide/bootloader-flash-from-zhal.md`.
 
-**Not fully validated on hardware. Only on a device you've already backed
-up.** If you'd rather not build/netboot an initramfs kernel, the
-bootloader's own raw NAND primitives can do both writes directly from
-`ZHAL>`. The catch: `ATWF`'s ECC/OOB handling is proven for MAIN (mtd3)
-but **not** for the bootloader (mtd0), which is the one write with no
-fallback — so this trades the netboot build for an unproven risk on the
-irreversible write.
+**Do not use this for the bootloader (mtd1).** Proven on hardware
+(2026-09-19): `ATWF` writes NAND page data only — it leaves the OOB/ECC
+area zero-filled instead of real per-sector ECC parity. The bootloader
+region is read by the SoC mask-ROM with strict hardware ECC, so a
+bootloader written via `ATWF` fails that check on boot: **hard brick**,
+recoverable only with a CH341A/NAND-clip. This is no longer a theoretical
+risk — it's measured.
 
-Block size is 128 KiB (`0x20000`). Patch the bootloader **first**, then
-MAIN, so MAIN boots on an already-patched bootloader:
-```
-ZHAL> ATSE VMG8825-T50            # unlock (see §3)
-ZHAL> ATEN 1,<password>
+We also checked whether some other zloader command writes ECC correctly
+instead. It doesn't exist: reverse-engineering the zloader's AT-command
+dispatch table (Ghidra, `zld_stage2_decompressed.bin`) shows `ATWF` is the
+**only** raw-NAND-write primitive. `ATWM`/`ATWW`/`ATWZ` look similar but
+only write fields into an in-RAM config struct (MAC address, misc flags,
+memory pokes) — none of them touch flash pages. There is no substitute
+command and nothing in the zloader itself to patch: `ATWF` tail-calls a
+shared low-level NAND driver at an address outside the zloader image we
+have, so the ECC-skipping logic isn't even reachable in the binary we can
+inspect.
 
-# bootloader (mtd0 region 0x0-0x40000 = blocks 0-1 inclusive)
-ZHAL> ATER 0,1
-ZHAL> ATLD bl.bin                 # then: atftp --put vmg8825-t50-bootloader-patched.bin ...
-ZHAL> ATWF <ram_addr>,0x0,0x40000
-ZHAL> ATRF 0x0,0x40000            # verify byte-for-byte against source BEFORE reboot
-ZHAL> ATSR                        # reboot -> bootloader now patched
-
-# MAIN (tclinux). Compute the block range from your own layout:
-#   lo = mtd3_start // 0x20000 ; hi = mtd3_end // 0x20000 - 1  (inclusive)
-#   assert (hi+1)*0x20000 == slave_start   # must land exactly on the boundary
-# on this project's unit that is blocks 4-451.
-ZHAL> ATER <lo>,<hi>
-ZHAL> ATLD main.bin               # then: atftp --put vmg8825-t50-era-signed.bin ...
-ZHAL> ATWF <ram_addr>,0x80000,<len>
-ZHAL> ATRF 0x80000,<len>          # verify against source
-ZHAL> ATGO
-```
-Do **not** use `ATUR` — it silently stops writing NAND after a device's
-first successful flash. `bldr-patch/flash_mtd3_via_ater_atwf.py` is a
-working reference for the MAIN write with the block-boundary asserts kept
-as hard checks. If you try the mtd0 write this way and it works, report
-back — that would let this become a documented default instead of an
-appendix.
+`ATWF` remains fine for MAIN (mtd3) — that partition is read by the
+kernel's own ECC-aware NAND driver later, not the mask-ROM, and is
+covered by the slave fallback besides. Use the netboot + `nandwrite` route
+(§4–§7 above, or the fully hand-typed version in
+`install-guide/beginner-manual.md`) for the bootloader — it goes through
+the kernel's NAND stack, which computes ECC correctly, and this is the
+only route this project recommends for mtd1.

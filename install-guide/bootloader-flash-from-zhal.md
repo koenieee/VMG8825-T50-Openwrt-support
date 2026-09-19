@@ -1,6 +1,39 @@
-# Flashing the patched bootloader directly from `ZHAL>` (no Linux) — DO NOT USE
+# Flashing the patched bootloader directly from `ZHAL>` (no Linux) — DO NOT USE `ATWF` FOR THIS
 
-## ⛔ CONFIRMED UNSAFE — this route bricks the bootloader. Do not use it.
+## ⛔ `ATWF` CONFIRMED UNSAFE for the bootloader. Do not use it.
+
+## Update 2026-09-19 — a different command, `ATUB`, may be the real answer
+
+Ghidra found a second, structurally different AT-command family:
+`ATUB`/`ATUD`/`ATUM` ("upgrade ZLD/ROMD/ROMFILE image"). Each calls a
+*different* internal write routine than `ATWF` — not an alias.
+
+We live-tested `ATUM` (writes `romfile`, mtd2 — chosen because it has no
+auto-reboot and isn't the bootloader). Result: **it writes real ECC.**
+A raw `nanddump --noecc --oob` readback of the written block showed
+genuine non-zero per-sector parity — the opposite of `ATWF`'s proven
+zero-filled OOB. So this zloader *does* have an ECC-safe write path; it's
+specifically the raw debug primitive `ATWF` that skips it.
+
+`ATUB` — the command that writes the bootloader/ZLD image itself — is
+the one that would actually replace this whole document if it works. It
+has **not been tested live as of this section**. It is riskier than
+`ATUM` to test for two concrete reasons:
+- it targets the bootloader directly (no spare/throwaway target like
+  mtd2's romfile), and
+- the decompiled handler **auto-reboots 2 seconds after a successful
+  write**, with no window to verify the write before it takes effect.
+
+**If you are reading this before a result has been added below: `ATUB`
+is untested. Do not try it expecting the same safety margin as the
+netboot+`nandwrite` route** (which lets you verify with `md5sum`/`cmp`
+*before* rebooting). Use netboot+`nandwrite` (main guide §4–§7) until an
+`ATUB` result is recorded here.
+
+### `ATUB` live test result
+
+*(not yet run — this line will be replaced with the actual outcome,
+including exact commands and console output, once tested)*
 
 Tested on real hardware (2026-09-19): `ATWF` writes NAND **data only** and
 does **not** program the hardware ECC/OOB parity. Proof — `ATWF` a known

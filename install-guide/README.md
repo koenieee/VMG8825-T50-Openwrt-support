@@ -317,15 +317,31 @@ recoverable only with a CH341A/NAND-clip. This is no longer a theoretical
 risk — it's measured.
 
 We also checked whether some other zloader command writes ECC correctly
-instead. It doesn't exist: reverse-engineering the zloader's AT-command
-dispatch table (Ghidra, `zld_stage2_decompressed.bin`) shows `ATWF` is the
-**only** raw-NAND-write primitive. `ATWM`/`ATWW`/`ATWZ` look similar but
-only write fields into an in-RAM config struct (MAC address, misc flags,
-memory pokes) — none of them touch flash pages. There is no substitute
-command and nothing in the zloader itself to patch: `ATWF` tail-calls a
-shared low-level NAND driver at an address outside the zloader image we
-have, so the ECC-skipping logic isn't even reachable in the binary we can
-inspect.
+instead of `ATWF`. Among raw debug primitives, no: `ATWF` is the only
+raw-NAND-write primitive. `ATWM`/`ATWW`/`ATWZ` look similar but only
+write fields into an in-RAM config struct (MAC address, misc flags,
+memory pokes) — none of them touch flash pages, and there is nothing in
+`ATWF` itself to patch: it tail-calls a shared low-level NAND driver
+outside the zloader image we have, so the ECC-skipping logic isn't even
+reachable in the binary we can inspect.
+
+**Update (2026-09-19):** a *different*, higher-level command family
+exists — `ATUB`/`ATUD`/`ATUM` ("upgrade ZLD/ROMD/ROMFILE image"), each
+calling a different internal write routine than `ATWF`. Live-tested
+`ATUM` (writes to `romfile`, mtd2 — lowest risk, no auto-reboot): it
+**writes real, correct ECC** (raw `nanddump --noecc --oob` showed
+genuine non-zero per-sector parity, not `ATWF`'s zero-filled signature).
+So an ECC-safe write path *does* exist in this zloader.
+
+The command that actually matters — `ATUB`, which writes the
+bootloader/ZLD image itself — is higher-risk to test than `ATUM` for two
+reasons: it targets the bootloader directly, and it **auto-reboots 2
+seconds after a successful write with no window to verify first**.
+Status as of this section: **not yet tested live.** If a live `ATUB`
+test has been run since, its result is recorded in
+`install-guide/bootloader-flash-from-zhal.md` and referenced here —
+check there before relying on this appendix's "do not use" verdict for
+`ATUB` specifically (it still holds for `ATWF`).
 
 `ATWF` remains fine for MAIN (mtd3) — that partition is read by the
 kernel's own ECC-aware NAND driver later, not the mask-ROM, and is

@@ -5,6 +5,21 @@ disabled) plus a prebuilt OpenWrt image. This is not an OpenWrt-upstream
 install path — the T50 has no signed/official firmware route, no web-UI
 upload, and no Firmware Selector. Expect soldering and a serial console.
 
+This is the one tutorial for everyone: whether you're comfortable driving
+things with a script or would rather type every command by hand and see
+exactly what's happening, both routes are covered inline (look for the
+"by hand" boxes) — nobody needs a separate "beginner" doc for this.
+
+## Is this for you?
+
+- You've never done a serial-console recovery before, but you're
+  comfortable with a terminal (typing commands, reading output).
+- You're OK opening the router's case and soldering (or holding pogo pins
+  steady) on a UART header.
+- You accept that one step here (§7, flashing the bootloader) **cannot be
+  undone if it goes wrong** and can only be fixed by desoldering the flash
+  chip. Read §7 fully before you get there.
+
 ## Read this first — why there is a "step 0"
 
 The stock bootloader enforces an RSA signature (and a CRC) on every boot.
@@ -26,6 +41,28 @@ So the real order is:
 Both flash writes happen from the same gate-free RAM shell, so you never
 depend on an unsigned image booting from flash. §8 also covers clearing a
 boot flag that latched during earlier experiments.
+
+## 0. Vocabulary (skip this if you already know these)
+
+- **Serial console**: a text-only connection over 3 wires (TX, RX, GND)
+  directly to the router's boot chip, independent of Ethernet/WiFi. It
+  works even when nothing else does — this is your safety net.
+- **`ZHAL>`**: the prompt of the stock bootloader ("zloader"). Reachable
+  within 5 seconds of power-on.
+- **`bldr>`**: a lower-level prompt inside the same bootloader, reached
+  from `ZHAL>` via the `ATGU` command. Used only for the RAM-boot step.
+- **RAM boot / netboot**: loading a Linux kernel straight into RAM over
+  the network and running it, without touching the flash chip at all.
+  This is how you get a safe root shell on a device that has never been
+  flashed with anything of yours yet.
+- **MTD / `mtdN`**: "Memory Technology Device" — Linux's name for one
+  flash partition. `mtd1` might be the bootloader on your unit and
+  something else on another; you always read the real number from
+  `/proc/mtd`, never assume it.
+- **NAND / OOB / ECC**: the flash chip stores each 2KB page plus 64 bytes
+  of "out-of-band" area holding error-correction codes. Writing data
+  without correct ECC means whatever reads the page back later may reject
+  it. This matters in §7.
 
 ## Precondition — check this first
 
@@ -55,21 +92,31 @@ different version is not covered by this guide.
 
 ## 1. What you need
 
-- A 3.3V USB-TTL serial adapter (e.g. CP2102/FT232) + jumper wires.
+Hardware:
+- A 3.3V USB-TTL serial adapter (e.g. CP2102/FT232) + jumper wires. **Do
+  not** use a USB-to-RS232 adapter — wrong voltage, will damage the board.
 - Soldering iron or pogo pins to reach the UART header inside the case
   (see `openwrt.org/inbox/toh/zyxel/zyxel_vmg8825-t50` for header photos).
-- A PC with `python3`, `atftp`, and a C compiler (`cc`).
-- A static IP on `192.168.1.0/24` (not `.1`) on the interface connected
-  to the router's LAN port.
 - A USB stick, FAT-formatted, to move images/backups to and from the
   running RAM shell.
+- An Ethernet cable from your PC directly to the router's LAN port (not
+  through a switch/other router — TFTP in §4 needs a direct link).
+
+Software (Linux assumed below; on Windows, do this inside WSL):
+- A serial terminal program: `screen` (used in the examples below,
+  `sudo apt install screen`), `minicom`, or `picocom` all work.
+- `python3` and `atftp` (`sudo apt install atftp`) if you're using the
+  scripted route; just `atftp` if you're doing everything by hand.
+- A C compiler (`cc`/`gcc`) to build the one password-derivation tool.
 - This repo cloned, with `tools/atenv3/atenv3_passwd` built:
   ```
   cc -o tools/atenv3/atenv3_passwd tools/atenv3/atenv3_passwd.c
   ```
-- Three images:
-  - **An initramfs kernel** for the netboot bootstrap (§4). This is
-    **not** prebuilt in this repo — you build it yourself, see §4.
+- Already in the repo, nothing to build:
+  - `firmware/vmg8825-t50-initramfs-kernel.bin` — the RAM-boot kernel for
+    §4. Generic (no personal data), works on any T50 matching the
+    precondition above. (Building your own is only needed if you've
+    changed kernel config — see §4a.)
   - `firmware/vmg8825-t50-era-signed.bin` — the OpenWrt build for MAIN
     (mtd3). WiFi ships disabled; no SSID/passphrase baked in.
   - `firmware/vmg8825-t50-bootloader-patched.bin` — the patched
@@ -81,18 +128,28 @@ different version is not covered by this guide.
 
 ## 2. Wire up serial and confirm the console
 
-115200 8N1, **CR-only** (do not send LF — the zloader reprints its menu
-if you do). Connect TX/RX/GND (do **not** connect the adapter's VCC — the
-board is already powered). Only one process may hold the port at a time
-(a logger and an interactive terminal at once silently split the byte
-stream). Power on the router; you should see the banner from the
-precondition section, then:
+115200 8N1, **CR-only** — do not send LF, the zloader reprints its menu
+if you do (`screen` does this correctly by default). Connect TX/RX/GND
+(do **not** connect the adapter's own 3.3V/VCC pin — the board is already
+powered by its own supply; two power sources at once can damage it). Only
+one process may hold the port at a time — a logger and an interactive
+terminal open together silently split the byte stream.
+
+Find your adapter and open it:
+```
+ls /dev/ttyUSB*          # usually /dev/ttyUSB0
+screen /dev/ttyUSB0 115200
+```
+Nothing prints until you power the router on. Do that now; you should see
+boot messages ending in:
 ```
 Hit any key to stop autoboot: 5..0
 ```
-Send a CR within that 5-second window to land on the `ZHAL>` prompt. If
-you miss it, power-cycle and try again — this is safe, nothing is written
-yet.
+Send a CR (plain Enter) within that 5-second window to land on `ZHAL>`.
+If you miss it, power-cycle and try again — nothing has been written to
+flash yet, retrying is free. Confirm the banner matches the precondition
+above. If `screen` looks frozen with no prompt, press Enter a couple more
+times — the bootloader only echoes after each carriage return.
 
 ## 3. Debug-unlock (needed every boot until the bootloader is patched)
 
@@ -100,18 +157,24 @@ At `ZHAL>`:
 ```
 ATSE VMG8825-T50
 ```
-prints a 36-hex-char seed. Feed it to the derivation tool:
+prints a 36-hex-char seed, e.g. `2E01C10309E01B14300B07B06A09FB71F10E`.
+On your PC, in a second terminal (leave the serial one open), feed it to
+the derivation tool:
 ```
-tools/atenv3/atenv3_passwd <SEED>
+tools/atenv3/atenv3_passwd 2E01C10309E01B14300B07B06A09FB71F10E
 ```
-then send the resulting numeric password:
+It prints a numeric password, e.g. `70631161228104069991704422457`. Back
+on the serial console:
 ```
-ATEN 1,<password>
+ATEN 1,70631161228104069991704422457
 ```
+(use your own seed/password each time — they're per-session and change
+every power cycle). No error means you're unlocked.
+
 The unlock is per power cycle. `netboot.py` and `dev_flash_cycle.py` do
-this for you automatically; you only do it by hand if you drive `ZHAL>`
-manually. After §7 (patched bootloader) this is no longer needed for any
-boot.
+this for you automatically if you use the scripted route below; you only
+do it by hand if you drive `ZHAL>` manually. After §7 (patched
+bootloader) this is no longer needed for any boot.
 
 ## 4. Step 0 — bootstrap a root shell over RAM (netboot)
 
@@ -119,35 +182,73 @@ This boots an initramfs kernel entirely in RAM. It touches no flash and
 does not go through the RSA/CRC gates, so it works on a stock, unpatched
 device — this is how you get a shell without first patching anything.
 
-### 4a. Build the initramfs kernel
+### 4a. The initramfs kernel
 
-The prebuilt `era-signed.bin` is a squashfs MAIN image, not a RAM kernel,
-so you need a separate initramfs build. In your OpenWrt tree (see
-`firmware/README.md` for the base build setup), enable initramfs and
-rebuild the kernel:
+`firmware/vmg8825-t50-initramfs-kernel.bin` (already in the repo) is the
+kernel you netboot below — nothing to build for a normal install. You
+only need to build your own if you've changed kernel config: in your
+OpenWrt tree (see `firmware/README.md` for the base build setup), enable
 ```
 CONFIG_TARGET_ROOTFS_INITRAMFS=y
 CONFIG_TARGET_INITRAMFS_COMPRESSION_XZ=y
 ```
-The output initramfs kernel image (under
-`bin/targets/econet/en751627/`) is what you netboot below. Make sure the
-build includes the USB fix (it is in this repo's overlay) so you can
-mount the USB stick from the RAM shell in §5–§7.
+and rebuild; the output is under `bin/targets/econet/en751627/`. Make
+sure any custom build includes the USB fix (already in this repo's
+overlay) so you can mount the USB stick in §5–§7.
 
 ### 4b. Netboot it
 
-`bldr-patch/netboot.py` is the one-shot ritual: it catches `ZHAL>`, does
-the §3 debug-unlock, TFTPs the kernel into RAM, relocates and jumps to
-it, then waits for a live shell prompt. The `ZHAL>` catch window is only
+Pick one:
+
+**Scripted (recommended if you have `python3`):** `bldr-patch/netboot.py`
+does the §3 unlock, TFTPs the kernel into RAM, relocates and jumps to it,
+then waits for a live shell prompt. The `ZHAL>` catch window is only
 ~90s from power-on, so start the script and power-cycle together:
 ```
 # start this, then power-cycle the router within a few seconds
-python3 bldr-patch/netboot.py <your-initramfs-kernel.bin>
+python3 bldr-patch/netboot.py firmware/vmg8825-t50-initramfs-kernel.bin
 ```
 `power_cycle.py` can do the power-cycle for you if your PDU/smart-plug is
-configured; otherwise pull and reapply power by hand. Success looks like
-a normal kernel boot ending at `root@OpenWrt:~#` over the same serial
-line. Nothing has been written to flash at this point.
+configured; otherwise pull and reapply power by hand.
+
+> **By hand, no scripts:** set a static IP on your PC first — an address
+> on `192.168.1.0/24` that is not `.1` (the router is the TFTP server at
+> `192.168.1.1`):
+> ```
+> nmcli con mod <your-ethernet-connection> ipv4.addresses 192.168.1.50/24 ipv4.method manual
+> nmcli con up <your-ethernet-connection>
+> ```
+> At `ZHAL>` (after §3's unlock):
+> ```
+> ATLD vmg8825-t50-initramfs-kernel.bin
+> ```
+> then push the file from your PC — the router is the TFTP server here:
+> ```
+> atftp --put --local-file firmware/vmg8825-t50-initramfs-kernel.bin \
+>       --remote-file vmg8825-t50-initramfs-kernel.bin 192.168.1.1
+> ```
+> Wait for `File download` with a byte count matching the file's real
+> size. Then:
+> ```
+> ATGU
+> ```
+> This prints `bldr>`. The kernel is now in RAM but linked to run from a
+> different address; a small fixed "move it, then jump" command block
+> does that relocation. Rather than typing ~100 lines, open
+> `bldr-patch/netboot-stub-manual.txt` and paste its entire contents into
+> the terminal in one go (any serial terminal sends a multi-line paste as
+> if you'd typed each line). It only matches the exact kernel file above
+> byte-for-byte; if you rebuild your own with a different size, regenerate
+> it with `bldr-patch/build_combined_kernel_stub.py` (see that file's
+> comments) instead of reusing this one.
+>
+> The stub's last line is `jump a1000000` — the point of no return *for
+> this boot only* (not a flash write; a botched attempt just means
+> power-cycling and starting over at §2).
+
+Either way, success looks like a normal kernel boot ending at
+`root@OpenWrt:~#` over the same serial line. Nothing has been written to
+flash at this point.
 
 ## 5. Back up flash (from the RAM shell) — do not skip
 
@@ -165,8 +266,8 @@ dd if=/dev/mtdN of=/mnt/mtd-bootloader-backup.bin   # the "bootloader" partition
 md5sum /mnt/mtd-bootloader-backup.bin
 # repeat dd for the "tclinux" (MAIN) and "tclinux_slave" partitions
 ```
-Keep these backups **off the device**. They are the only recovery path if
-a write lands in the wrong place.
+Copy these off the device onto your PC before continuing. They are the
+only recovery path if a write lands in the wrong place.
 
 ## 6. Flash OpenWrt to MAIN (mtd3) — safe, has a slave fallback
 
@@ -184,15 +285,16 @@ Read it back and compare against the source before moving on:
 nanddump -f /mnt/readback.bin -l $(stat -c%s /mnt/vmg8825-t50-era-signed.bin) /dev/mtdX
 cmp /mnt/readback.bin /mnt/vmg8825-t50-era-signed.bin
 ```
-This write is safe: if anything is wrong you can redo it, and the OEM
-`tclinux_slave` recovery copy is untouched as long as you never wrote to
-it.
+No output from `cmp` means they match. This write is safe: if anything is
+wrong you can redo it, and the OEM `tclinux_slave` recovery copy is
+untouched as long as you never wrote to it.
 
 ## 7. Flash the patched bootloader (mtd1) — no fallback, read fully first
 
 This is the one write with **no recovery slot**. Do it from the same live
 RAM shell (so a bad write can still be fixed from the §5 backup without a
-reboot), last, and only after the §6 readback matched.
+reboot), last, and only after the §6 readback matched. A bad write here
+means desoldering the flash chip to fix it.
 
 > **Shortcut:** if you flashed `vmg8825-t50-era-signed-installer.bin` in
 > §6 instead of the plain image, the steps below are already scripted as
@@ -202,6 +304,12 @@ reboot), last, and only after the §6 readback matched.
 > already rebooted into it normally. Read the manual steps below at least
 > once anyway so you know what the script is doing and how to recover by
 > hand if its verify step fails.
+
+Do **not** try to do this from `ZHAL>` with `ATWF` instead of `nandwrite`
+below — proven on real hardware to skip the flash's error-correction
+data entirely, which the boot chip checks strictly for this exact
+partition (see the appendix). It is not a shortcut, it's a guaranteed
+brick for this specific partition.
 
 1. Verify the file's md5 on the USB stick against your local copy.
 2. Write it to the partition labelled `bootloader`:
@@ -395,8 +503,7 @@ trace in `install-guide/bootloader-flash-from-zhal.md`.
 
 `ATWF` remains fine for MAIN (mtd3) — that partition is read by the
 kernel's own ECC-aware NAND driver later, not the mask-ROM, and is
-covered by the slave fallback besides. Use the netboot + `nandwrite` route
-(§4–§7 above, or the fully hand-typed version in
-`install-guide/beginner-manual.md`) for the bootloader — it goes through
-the kernel's NAND stack, which computes ECC correctly, and this is the
-only route this project recommends for mtd1.
+covered by the slave fallback besides. Use the netboot + `nandwrite`
+route (§4–§7 above) for the bootloader — it goes through the kernel's
+NAND stack, which computes ECC correctly, and this is the only route
+this project recommends for mtd1.

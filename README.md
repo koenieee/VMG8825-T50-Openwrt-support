@@ -197,18 +197,9 @@ known gaps a contributor could pick up next, roughly in priority order:
   across the same firmware revision (see `install-guide/README.md`'s
   precondition), but a second independent confirmation would harden
   that assumption considerably.
-- **A full, scrubbed boot log.** `install-guide/README.md` documents
-  the flashing procedure but there's no reference transcript of a full
-  cold boot (bootloader banner through OpenWrt login prompt) to compare
-  your own console output against. Adding one — with the per-unit
-  MAC/serial/board-info lines redacted the same way
-  `BOOTLOADER-PATCH.md` describes for the bootloader binary — would
-  help newcomers confirm they're seeing a healthy boot vs. something
-  gone wrong. (An old raw capture exists in this project's private
-  dev history, but it's a noisy debug-session dump — mixed baud-rate
-  garbage from the vendor's progress counter, no clean start/end — not
-  something fit to hand to newcomers as-is; a fresh, clean capture is
-  better than salvaging that one.)
+- ~~A full, scrubbed boot log.~~ Done —
+  `install-guide/example-boot-log.txt` has a full, redacted capture from
+  ATGO through a working OpenWrt shell to compare your own boot against.
 
 Contributions on any of the above are welcome — open an issue or PR.
 

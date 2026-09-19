@@ -159,3 +159,14 @@ unit that's been experimented on can still show old files under `/root/`
 even on a fresh image — that's the overlay, not the new squashfs.
 Recommended sequence is now: flash `-installer` once to patch the
 bootloader, then reflash `-locked` for everyday use.
+
+## One tutorial instead of two
+
+`install-guide/README.md` and `install-guide/beginner-manual.md` had
+drifted into two parallel documents describing the same install, one
+terse/scripted, one hand-typed/hand-holding — a real maintenance risk (a
+fix in one, like §7a above, could easily miss the other). Merged into a
+single `install-guide/README.md`: the scripted route stays the default,
+with "by hand, no scripts" boxes inline at the two steps that actually
+differ (netboot in §4, the debug-unlock example in §3) instead of a whole
+second file to keep in sync. `beginner-manual.md` is removed.

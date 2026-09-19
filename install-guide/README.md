@@ -327,21 +327,26 @@ reachable in the binary we can inspect.
 
 **Update (2026-09-19):** a *different*, higher-level command family
 exists — `ATUB`/`ATUD`/`ATUM` ("upgrade ZLD/ROMD/ROMFILE image"), each
-calling a different internal write routine than `ATWF`. Live-tested
-`ATUM` (writes to `romfile`, mtd2 — lowest risk, no auto-reboot): it
-**writes real, correct ECC** (raw `nanddump --noecc --oob` showed
-genuine non-zero per-sector parity, not `ATWF`'s zero-filled signature).
-So an ECC-safe write path *does* exist in this zloader.
+calling a shared validator/write dispatcher rather than `ATWF`'s code
+path directly. Live-tested `ATUM` (writes to `romfile`, mtd2 — lowest
+risk, no auto-reboot): it **writes real, correct ECC** (raw `nanddump
+--noecc --oob` showed genuine non-zero per-sector parity, not `ATWF`'s
+zero-filled signature). So an ECC-safe write path *does* exist in this
+zloader.
 
-The command that actually matters — `ATUB`, which writes the
-bootloader/ZLD image itself — is higher-risk to test than `ATUM` for two
-reasons: it targets the bootloader directly, and it **auto-reboots 2
-seconds after a successful write with no window to verify first**.
-Status as of this section: **not yet tested live.** If a live `ATUB`
-test has been run since, its result is recorded in
-`install-guide/bootloader-flash-from-zhal.md` and referenced here —
-check there before relying on this appendix's "do not use" verdict for
-`ATUB` specifically (it still holds for `ATWF`).
+**`ATUB` (writes the bootloader/ZLD image itself) is a dead end,
+confirmed by static analysis, not by a live test.** Decompiling the
+shared dispatcher both commands funnel into showed it takes a `mode`
+flag that is hardcoded per caller: `ATUM` calls it with the mode that
+takes the ECC-safe write path (matching the live result above); `ATUB`
+(and `ATUD`) call it with the *other* mode, which resolves to the exact
+same low-level write function `ATWF` uses — the one already proven live
+to leave zero-filled OOB. `ATUB` also auto-reboots 2 seconds after a
+successful write with no verify window. The combination — same broken
+write primitive as `ATWF`, plus zero chance to check before it reboots —
+means testing it live would almost certainly hard-brick the device for
+no new information. **Not tested on hardware; do not test it.** Full
+trace in `install-guide/bootloader-flash-from-zhal.md`.
 
 `ATWF` remains fine for MAIN (mtd3) — that partition is read by the
 kernel's own ECC-aware NAND driver later, not the mask-ROM, and is

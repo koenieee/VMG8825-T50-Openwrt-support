@@ -141,9 +141,18 @@ give `rootfs_data` a healthy margin above the 17-LEB minimum.
 
 ## WiFi
 
-Both MT7615 radios default to `5g`. Both chips also support 2.4 GHz
-(`iw phy phyN info`) — set one to `2g` in `/etc/config/wireless` for real
-dual-band coverage instead of two overlapping 5 GHz APs.
+Both MT7615 radios default to `5g`; a board-specific uci-defaults script
+(`base-files/etc/uci-defaults/05_vmg8825-t50-wifi-band-split`) now flips
+`radio1` to `2g` on first boot for real dual-band instead of two
+overlapping 5 GHz APs — untested on real hardware yet, verify after
+flashing.
+
+The STA-mode hang below is a separate, upstream `mt76`/mt7615
+firmware-stability class of bug (see
+https://github.com/openwrt/mt76/issues/690,
+https://github.com/openwrt/mt76/issues/897), not this project's own bug
+or something a config change fixes. Mitigation is operational (avoid
+sustained STA mode, soak-test AP-only use), not a code fix.
 
 ### Client-mode (STA) radio hang, observed under real use (2026-09-17)
 

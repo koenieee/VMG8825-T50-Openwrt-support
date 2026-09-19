@@ -424,8 +424,9 @@ uci set wireless.default_radio0.key=...
 uci commit wireless
 wifi
 ```
-Both radios default to `5g`/channel 36 — see `NEXT_STEPS.md` for switching
-one to `2g` for real dual-band coverage.
+`radio0` stays `5g`/channel 36; `radio1` is auto-switched to `2g` on
+first boot for real dual-band coverage (see `NEXT_STEPS.md` "WiFi") —
+no manual band change needed.
 
 ## 10. Recovering from a bad flash
 

@@ -56,9 +56,9 @@ console, and following `install-guide/README.md` step by step.
 - No DSA (`mediatek,mt7530`) support for this target in OpenWrt yet — the
   switch runs as a dumb, unmanaged bridge (all LAN ports together, no
   per-port VLAN control from Linux).
-- Both WiFi radios default to 5 GHz; both chips also support 2.4 GHz —
-  set one radio's `band` to `2g` in `/etc/config/wireless` for real
-  dual-band instead of two overlapping 5 GHz APs.
+- Both WiFi radios default to 5 GHz; a board-specific uci-defaults
+  script now flips `radio1` to 2g on first boot for real dual-band
+  instead of two overlapping 5 GHz APs — untested on real hardware yet.
 - WiFi client (STA) mode was observed to wedge the radio's firmware
   after sustained runtime (recurring firmware-timeout errors, recovered
   by a reboot) — see `NEXT_STEPS.md` for the one occurrence recorded so

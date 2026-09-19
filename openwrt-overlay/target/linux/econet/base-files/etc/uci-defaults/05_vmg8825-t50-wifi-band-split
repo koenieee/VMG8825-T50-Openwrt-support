@@ -1,0 +1,15 @@
+. /lib/functions.sh
+
+[ "$(board_name)" = "zyxel,vmg8825-t50" ] || exit 0
+
+# Both onboard MT7615 radios (two identical PCIe cards, see the WiFi
+# devicetree comment in en751627_zyxel_vmg8825-t50.dts) support both
+# bands, and OpenWrt's wireless auto-detect defaults both to 5g -- two
+# overlapping 5GHz APs, no 2.4GHz coverage. Split radio1 to 2g for real
+# dual-band. See NEXT_STEPS.md "WiFi".
+[ -n "$(uci -q get wireless.radio1)" ] && {
+	uci set wireless.radio1.band='2g'
+	uci commit wireless
+}
+
+exit 0

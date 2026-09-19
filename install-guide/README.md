@@ -74,6 +74,10 @@ different version is not covered by this guide.
     (mtd3). WiFi ships disabled; no SSID/passphrase baked in.
   - `firmware/vmg8825-t50-bootloader-patched.bin` — the patched
     bootloader (mtd1).
+  - Optional: `firmware/vmg8825-t50-era-signed-installer.bin` instead of
+    the plain `era-signed.bin` in §6 — same build, but ships the patched
+    bootloader and a flashing script at `/root/`, so §7 becomes "run the
+    script" instead of typing the commands by hand. See `firmware/README.md`.
 
 ## 2. Wire up serial and confirm the console
 
@@ -189,6 +193,15 @@ it.
 This is the one write with **no recovery slot**. Do it from the same live
 RAM shell (so a bad write can still be fixed from the §5 backup without a
 reboot), last, and only after the §6 readback matched.
+
+> **Shortcut:** if you flashed `vmg8825-t50-era-signed-installer.bin` in
+> §6 instead of the plain image, the steps below are already scripted as
+> `/root/flash-patched-bootloader.sh` — it does the same backup/erase/
+> write/verify sequence plus a `/proc/mtd` partition check, and works from
+> that image's shell whether you're still in the §4 RAM boot or have
+> already rebooted into it normally. Read the manual steps below at least
+> once anyway so you know what the script is doing and how to recover by
+> hand if its verify step fails.
 
 1. Verify the file's md5 on the USB stick against your local copy.
 2. Write it to the partition labelled `bootloader`:

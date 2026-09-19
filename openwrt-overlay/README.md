@@ -64,6 +64,11 @@ cp -r openwrt-overlay/package/kernel/econet-eth/* openwrt/package/kernel/econet-
 - `VMG8825-T50-FLASHING.md` — flashing/boot notes for this board.
 - `scripts/` — board-specific helper scripts (TFTP flash wrapper,
   autoboot watcher).
+- `files/root/` — baked into the rootfs via OpenWrt's automatic
+  `$(TOPDIR)/files` pickup (no `.config` change needed): the patched
+  bootloader binary plus `flash-patched-bootloader.sh`, which does §7 of
+  `install-guide/README.md` for you from a running shell. Only present
+  in the `-installer` firmware variant — see `firmware/README.md`.
 
 **Build pitfall:** after patching `econet-eth`'s driver source,
 `package/kernel/econet-eth/{clean,compile}` + `target/install` alone

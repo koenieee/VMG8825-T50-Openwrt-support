@@ -1,11 +1,12 @@
 # firmware/
 
-Prebuilt binaries: the current known-good build and its matching patched
-bootloader. Only these two files are shipped — a pre-wrap `.trx` was
-removed from here because it was a stale, older build than the shipped
-`era-signed.bin` (the two are only consistent when produced together;
-keeping a mismatched pair around is actively misleading). Build your own
-`.trx` from source if you want one — see below.
+Prebuilt binaries: the current known-good build, its matching patched
+bootloader, and an alternate build with that bootloader (plus the script
+that flashes it) baked in. A pre-wrap `.trx` was removed from here because
+it was a stale, older build than the shipped `era-signed.bin` (the two are
+only consistent when produced together; keeping a mismatched pair around
+is actively misleading). Build your own `.trx` from source if you want
+one — see below.
 
 - `vmg8825-t50-bootloader-patched.bin` — the patched zloader bootloader
   (mtd0): RSA-signature and CRC boot-time checks disabled, see
@@ -26,6 +27,21 @@ keeping a mismatched pair around is actively misleading). Build your own
   fresh (below) if you specifically need to test WAN. WiFi is disabled
   by default (see `install-guide/README.md` §5) — no network name or
   passphrase is baked into this image.
+- `vmg8825-t50-era-signed-installer.bin` — byte-identical to
+  `era-signed.bin` above, except `/root/` also ships
+  `vmg8825-t50-bootloader-patched.bin` and `flash-patched-bootloader.sh`
+  (source: `openwrt-overlay/files/root/`). Once you're at a shell on
+  this image (booted normally, or the §4 RAM shell), running that script
+  does §7's erase/write/verify for you instead of typing it by hand — same
+  underlying `flash_erase`/`nandwrite` steps, same no-fallback risk on
+  mtd1, same backup/confirm/verify safety checks, plus a `/proc/mtd`
+  partition-name/size check before it touches anything. Flashing the
+  bootloader is still an explicit, optional choice either way — nothing
+  in this image touches mtd0/mtd1 on its own. **Confirmed working on
+  hardware** (2026-09-19): boots identically to `era-signed.bin`, file
+  present with matching md5, script executable, `mtdinfo /dev/mtd1`
+  writable=true; the actual bootloader flash was deliberately not run
+  during that test.
 
 ## Building your own
 
@@ -53,3 +69,11 @@ from the shipped `era-signed.bin` above (upstream moves forward over
 time) — that's expected, not a sign anything is wrong. It has **not**
 been flashed/tested on real hardware; only the shipped `era-signed.bin`
 carries that confirmation.
+
+To reproduce the `-installer` variant instead of the plain one, also copy
+`openwrt-overlay/files/` into `openwrt/files/` before `make` — OpenWrt
+picks up `openwrt/files/` automatically and bakes its contents into the
+rootfs, no `.config` change needed:
+```sh
+cp -r openwrt-overlay/files openwrt/
+```

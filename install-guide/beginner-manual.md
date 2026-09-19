@@ -271,6 +271,14 @@ This is the one write with **no recovery slot**. A bad write here means
 desoldering the flash chip to fix it. Do it now, from the same live RAM
 shell, only after §6's `cmp` matched.
 
+> If you'd rather not type the commands below by hand, `firmware/vmg8825-t50-era-signed-installer.bin`
+> is the same image as §6's, but with these exact steps already written
+> as `/root/flash-patched-bootloader.sh` — use it in §6 instead of the
+> plain image, then just run that script here. It still asks you to
+> confirm twice and still refuses to continue if anything looks wrong.
+> Reading the manual steps below once is still worth it, so you understand
+> what to do if the script's verify step ever fails.
+
 Do **not** try to do this from `ZHAL>` with `ATWF` instead of this
 `nandwrite` step — that command has been proven on real hardware to skip
 the flash's error-correction data entirely, which the boot chip checks

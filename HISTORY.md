@@ -118,3 +118,14 @@ scrubbing anything device-specific or personal, and restructuring
 everything into the overlay + install-guide + prebuilt-images shape
 this repo has now — so that someone starting fresh doesn't have to
 retrace any of the above, just follow `install-guide/README.md`.
+
+## Scripting the bootloader-flash step
+
+The bootloader-patch write in §7 was, until now, always typed by hand.
+An alternate firmware build (`vmg8825-t50-era-signed-installer.bin`)
+ships the patched bootloader plus a small script that does that same
+backup/erase/write/verify sequence for you, with a partition sanity check
+added on top. It changes nothing about *how* the write happens or how
+safe it is — same commands, same no-fallback risk on mtd1 — it just saves
+typing them out. Flashing the bootloader at all is still, and remains, an
+explicit choice.

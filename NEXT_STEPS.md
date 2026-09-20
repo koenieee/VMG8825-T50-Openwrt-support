@@ -23,10 +23,16 @@ none of this is size-constrained:
   iperf3 saga under "LAN throughput" below); nothing in
   `DEVICE_PACKAGES` actually shipped it.
 
-Verified by checking each package/kmod name resolves to a real
-`Package/`/`KernelPackage/` definition in the checked-out feeds/kernel
-tree; not yet build-tested end to end (a full `make` wasn't run this
-session — see "before flashing and building" batching in git history).
+**Verified on real hardware** (2026-09-20): first build had a stale
+`.config` problem — `make defconfig` had frozen `# CONFIG_PACKAGE_x is not
+set` for these from before this change existed, and re-running `defconfig`
+doesn't override an already-recorded value even after `DEVICE_PACKAGES`
+adds a `select DEFAULT_x`. Had to clear those specific lines from `.config`
+by hand before `defconfig` would pick the new defaults up -- this is local
+build state only (`.config` is gitignored), not a repo bug. After that fix,
+flashed and booted: `apk info -e` confirms all six installed, `base64`
+works, `/usr/libexec/sftp-server` resolves, `lsusb` lists a real attached
+device, `/www/luci-static` is populated.
 
 ## Memory
 
@@ -36,10 +42,10 @@ per the OEM bootlog, but the vendor kernel itself only mapped ~432MB
 (reason for the reserved ~80MB unknown); 448MB was picked as the safer
 of the two previously-proposed candidates (vs. the untested full
 `0x20000000`/512MB), only ~16MB past the vendor's own proven figure.
-**UNTESTED ON REAL HARDWARE** — verify via a netboot session (see
-`bldr-patch/netboot.py`) before trusting this for a real flash; if it
-doesn't boot cleanly, fall back toward 432MB (`0x1b000000`) or the
-original 256MB.
+**Verified on real hardware** (2026-09-20): flashed and booted clean,
+`MemTotal: 443152 kB` in `/proc/meminfo` (the ~5MB gap from 448MB is normal
+kernel/reserved-memory overhead) -- no crash, no panic, boot flag stayed
+at 0.
 
 ## Ethernet
 

@@ -33,6 +33,8 @@ console, and following `install-guide/README.md` step by step.
 - LuCI web UI and SFTP (`openssh-sftp-server`, since dropbear only runs
   an SFTP server, it doesn't provide one) ship by default too — see
   `NEXT_STEPS.md` "Packages".
+- RAM: the devicetree maps 448 MB of the board's 512 MB (up from a
+  conservative 256 MB) — confirmed booting clean (`MemTotal: 443152 kB`).
 - Persistent `/overlay` (UBIFS-backed on its own MTD partition, not
   tmpfs) — config survives reboots.
 - Flashing MAIN via the raw `ATER`/`ATWF` primitives (not `ATUR`, which
@@ -51,9 +53,6 @@ console, and following `install-guide/README.md` step by step.
   but the session that added it ended before confirming it with a cable
   in WAN — see `NEXT_STEPS.md` for the exact sequence of bugs found and
   fixed, and what to actually check.
-- The devicetree now maps 448 MB of the board's 512 MB RAM (up from a
-  conservative 256 MB) — UNTESTED on real hardware yet, see
-  `NEXT_STEPS.md`.
 - Only LAN port 1 has been individually hardware-tested; LAN2-4 share
   the same switch and should work but that hasn't been verified port by
   port. LAN throughput has been measured (iperf3): stable under load,

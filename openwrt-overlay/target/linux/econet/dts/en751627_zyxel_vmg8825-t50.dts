@@ -12,12 +12,17 @@
 		device_type = "memory";
 		/*
 		 * OEM bootlog reports 512MB DRAM, but the vendor kernel only
-		 * mapped ~432MB (rest reserved for its own use). This build
-		 * maps a conservative 256MB instead. Bumping to 0x1c000000
-		 * (448MB) or 0x20000000 (512MB) has not been tried -- confirm
-		 * what your zloader/kernel actually maps before changing this.
+		 * mapped ~432MB (rest reserved for its own use, reason
+		 * unknown -- vendor software choice or genuinely
+		 * hardware/bootloader-reserved). Bumped from the original
+		 * conservative 256MB to 448MB (0x1c000000): the smaller of
+		 * the two previously-untried candidates, only ~16MB past the
+		 * vendor's own proven-working ~432MB rather than the full,
+		 * untested 512MB. UNTESTED ON REAL HARDWARE -- verify via a
+		 * netboot session (bldr-patch/netboot.py) before trusting
+		 * this for a real flash.
 		 */
-		reg = <0x00000000 0x10000000>;
+		reg = <0x00000000 0x1c000000>;
 	};
 
 	chosen {

@@ -1,13 +1,45 @@
 # Known limitations / open items
 
+## Packages
+
+`DEVICE_PACKAGES` for `zyxel_vmg8825-t50` (`image/en751627.mk`) only ever
+listed the WiFi/USB-controller kmods — none of what a "normal" OpenWrt
+router image ships was actually in there. Added, with ~46MiB of unused
+headroom in the 56MiB `FACTORY_SIZE` budget (current build is ~10MiB) so
+none of this is size-constrained:
+
+- `luci` — web UI. Never on by default in upstream OpenWrt; every device
+  that ships it adds it explicitly, this one didn't.
+- `openssh-sftp-server` — dropbear can *run* an SFTP server
+  (`DROPBEAR_SFTPSERVER` defaults on here, this device isn't
+  `SMALL_FLASH`) but doesn't provide one itself; it execs
+  `/usr/libexec/sftp-server`, which only this package installs.
+- `coreutils-base64` — busybox's own `base64` applet defaults OFF
+  upstream (`BUSYBOX_DEFAULT_BASE64 := n`), so it was genuinely missing,
+  not just a cut-down version.
+- `kmod-usb-storage`, `kmod-fs-ext4`, `kmod-fs-vfat`, `kmod-nls-cp437`,
+  `kmod-nls-iso8859-1`, `block-mount`, `usbutils` — USB mass storage
+  previously only worked via a manual `apk add` during testing (see the
+  iperf3 saga under "LAN throughput" below); nothing in
+  `DEVICE_PACKAGES` actually shipped it.
+
+Verified by checking each package/kmod name resolves to a real
+`Package/`/`KernelPackage/` definition in the checked-out feeds/kernel
+tree; not yet build-tested end to end (a full `make` wasn't run this
+session — see "before flashing and building" batching in git history).
+
 ## Memory
 
-The devicetree maps a conservative 256MB (`memory@0`, `reg = <0x0
-0x10000000>`) even though the board has 512MB DRAM and the OEM bootlog
-reports it as such — the vendor kernel itself only mapped ~432MB. Bumping
-to `0x1c000000` (448MB) or `0x20000000` (512MB) has not been tried; do so
-only after confirming what your own zloader/kernel actually maps (e.g.
-via a netboot session, see `bldr-patch/netboot.py`).
+The devicetree now maps 448MB (`memory@0`, `reg = <0x0 0x1c000000>`),
+bumped from the original conservative 256MB. The board has 512MB DRAM
+per the OEM bootlog, but the vendor kernel itself only mapped ~432MB
+(reason for the reserved ~80MB unknown); 448MB was picked as the safer
+of the two previously-proposed candidates (vs. the untested full
+`0x20000000`/512MB), only ~16MB past the vendor's own proven figure.
+**UNTESTED ON REAL HARDWARE** — verify via a netboot session (see
+`bldr-patch/netboot.py`) before trusting this for a real flash; if it
+doesn't boot cleanly, fall back toward 432MB (`0x1b000000`) or the
+original 256MB.
 
 ## Ethernet
 

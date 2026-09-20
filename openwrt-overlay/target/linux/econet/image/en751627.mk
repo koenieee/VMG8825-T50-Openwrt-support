@@ -45,7 +45,29 @@ define Device/zyxel_vmg8825-t50
   # blob) must fit inside it, same math as the ATER/ATWF flash-range derivation.
   FACTORY_SIZE := 56m
   # MT7615 (Wi-Fi 5) instead of the EX3301-T0's MT7915.
-  DEVICE_PACKAGES := kmod-usb3 kmod-mt7615e kmod-mt7615-firmware
+  #
+  # Beyond the WiFi/USB-controller kmods, this pulls in what a "normal"
+  # OpenWrt router image ships that a bare DEVICE_PACKAGES list otherwise
+  # lacks -- there's 46+MiB of headroom in the 56MiB FACTORY_SIZE budget
+  # above (current build is ~10MiB), so none of this is size-constrained:
+  #   - luci: web UI (never on by default in upstream OpenWrt, every
+  #     device that ships it adds it explicitly).
+  #   - openssh-sftp-server: dropbear can *run* an SFTP server
+  #     (DROPBEAR_SFTPSERVER is on by default here, this device isn't
+  #     SMALL_FLASH) but doesn't provide one itself -- it execs
+  #     /usr/libexec/sftp-server, which only this package installs.
+  #   - coreutils-base64: busybox's base64 applet defaults to OFF
+  #     upstream (BUSYBOX_DEFAULT_BASE64 := n) -- was actually missing,
+  #     not just a minimal version.
+  #   - kmod-usb-storage + kmod-fs-ext4/kmod-fs-vfat/kmod-nls-cp437/
+  #     kmod-nls-iso8859-1 + block-mount + usbutils: USB mass storage
+  #     was previously only working via manual opkg/apk installs during
+  #     testing (see NEXT_STEPS.md's iperf3 saga) -- nothing in
+  #     DEVICE_PACKAGES actually shipped it.
+  DEVICE_PACKAGES := kmod-usb3 kmod-mt7615e kmod-mt7615-firmware \
+    luci openssh-sftp-server coreutils-base64 \
+    kmod-usb-storage kmod-fs-ext4 kmod-fs-vfat kmod-nls-cp437 \
+    kmod-nls-iso8859-1 block-mount usbutils
   # Static UBI: only a "rootfs" volume, no auto-appended "rootfs_data"
   # (that would immediately claim all free PEBs on first attach -- see
   # append-ubi-static-rootfs below and NEXT_STEPS.md #2 for why).

@@ -27,7 +27,12 @@ console, and following `install-guide/README.md` step by step.
   treat WAN as "should work, not reconfirmed" rather than "confirmed".
   The switch runs as a single unmanaged bridge (no DSA/per-port VLAN
   support for this SoC yet in OpenWrt).
-- USB storage.
+- USB storage — `kmod-usb-storage`/`block-mount`/ext4+vfat+nls kmods now
+  ship in the default image (previously only worked via a manual
+  `apk add` during testing).
+- LuCI web UI and SFTP (`openssh-sftp-server`, since dropbear only runs
+  an SFTP server, it doesn't provide one) ship by default too — see
+  `NEXT_STEPS.md` "Packages".
 - Persistent `/overlay` (UBIFS-backed on its own MTD partition, not
   tmpfs) — config survives reboots.
 - Flashing MAIN via the raw `ATER`/`ATWF` primitives (not `ATUR`, which
@@ -46,9 +51,9 @@ console, and following `install-guide/README.md` step by step.
   but the session that added it ended before confirming it with a cable
   in WAN — see `NEXT_STEPS.md` for the exact sequence of bugs found and
   fixed, and what to actually check.
-- The devicetree currently maps a conservative 256 MB of the board's
-  512 MB RAM; bumping this to the full amount hasn't been tried (see
-  `NEXT_STEPS.md`).
+- The devicetree now maps 448 MB of the board's 512 MB RAM (up from a
+  conservative 256 MB) — UNTESTED on real hardware yet, see
+  `NEXT_STEPS.md`.
 - Only LAN port 1 has been individually hardware-tested; LAN2-4 share
   the same switch and should work but that hasn't been verified port by
   port. LAN throughput has been measured (iperf3): stable under load,
@@ -115,7 +120,7 @@ module for a different smart-plug API.
 | SoC | EcoNet **EN7516** (EN751627 family), MIPS **1004Kc**, 2x900 MHz, big-endian |
 | OpenWrt target | `econet` / subtarget **`en751627`** |
 | Tested against | OpenWrt `main` @ [`928cd26`](https://github.com/openwrt/openwrt/commit/928cd26bd938b8ac46b79e14f5f9f4b1d772abe8) (2026-09-17), kernel **6.18** — `openwrt/` is a submodule tracking `main`, which moves; `git checkout 928cd26` in `openwrt/` to reproduce the exact tested combination, or use it as a starting point and expect some drift on a newer checkout |
-| RAM | 512 MB DDR3 (devicetree currently maps a conservative 256 MB, see `NEXT_STEPS.md`) |
+| RAM | 512 MB DDR3 (devicetree maps 448 MB, untested — see `NEXT_STEPS.md`) |
 | Flash | **SPI NAND** Winbond **W25M02GV**, 256 MiB, SLC, page 2048 / OOB 64 |
 | Switch/ethernet | Integrated in SoC, 1xWAN + 4xLAN gigabit — no mainline driver, out-of-tree `econet-eth` used |
 | WiFi | MediaTek **MT7615** (WiFi 5, dualband), PCIe, `mt76`/`kmod-mt7615e` |
@@ -187,8 +192,8 @@ known gaps a contributor could pick up next, roughly in priority order:
 - **DSA support for this target.** The switch currently runs as one
   dumb, unmanaged bridge — no `mediatek,mt7530` DSA integration in
   OpenWrt yet, so no per-port VLAN/isolation control from Linux.
-- **Bump mapped RAM from 256 MB to the full 512 MB** (or at least the
-  ~432 MB the vendor kernel mapped) — untried, see `NEXT_STEPS.md`.
+- **Verify the 448 MB RAM bump on real hardware** (up from 256 MB) —
+  untested, see `NEXT_STEPS.md`. Full 512 MB remains untried too.
 - **General stability soak-testing.** Nothing here has been run for
   days under load; reboot loops, overlay-fs behavior under low disk,
   and WiFi throughput/stability over time are all unverified.

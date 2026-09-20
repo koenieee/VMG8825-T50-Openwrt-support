@@ -19,14 +19,22 @@ one — see below.
   for what that means and the alternative of patching your own dump.
 - `vmg8825-t50-era-signed.bin` — the OpenWrt build, wrapped in the
   era-0x174 header this board's zloader expects, ready to flash to MAIN.
-  **Confirmed working on hardware**: full boot to squashfs+UBIFS-overlay
-  userspace, live root shell, WiFi, USB storage, and LAN all functional.
-  WAN (ETHWAN) should also work but its last fix was never re-tested
-  after flashing (see `NEXT_STEPS.md`'s Ethernet section) — whether this
-  exact file was built before or after that fix is not tracked; rebuild
-  fresh (below) if you specifically need to test WAN. WiFi is disabled
-  by default (see `install-guide/README.md` §5) — no network name or
-  passphrase is baked into this image.
+  **Rebuilt 2026-09-20** with LuCI, SFTP (`openssh-sftp-server`), USB
+  storage (`kmod-usb-storage`/`block-mount`/ext4+vfat+nls), `base64`,
+  and the 448 MB RAM devicetree mapping now included by default. This
+  exact header wrapping wasn't itself re-flashed this round, but its
+  rootfs and kernel are byte-for-byte identical (same
+  `kernelChksum`/`rootfsChksum` in the era header) to
+  `era-signed-locked.bin` below, which *was* flash-tested and confirmed
+  on real hardware with this same package set — full boot, `apk info -e`
+  confirms all six new packages, `base64`/`sftp-server`/`lsusb` all
+  work, `MemTotal: 443152 kB`. WAN (ETHWAN) should also work but its
+  last fix was never re-tested after flashing (see `NEXT_STEPS.md`'s
+  Ethernet section) — whether this exact file was built before or after
+  that fix is not tracked; rebuild fresh (below) if you specifically
+  need to test WAN. WiFi is disabled by default (see
+  `install-guide/README.md` §5) — no network name or passphrase is
+  baked into this image.
 - `vmg8825-t50-era-signed-installer.bin` — byte-identical to
   `era-signed.bin` above, except `/root/` also ships
   `vmg8825-t50-bootloader-patched.bin` and `flash-patched-bootloader.sh`
@@ -37,11 +45,24 @@ one — see below.
   mtd1, same backup/confirm/verify safety checks, plus a `/proc/mtd`
   partition-name/size check before it touches anything. Flashing the
   bootloader is still an explicit, optional choice either way — nothing
-  in this image touches mtd0/mtd1 on its own. **Confirmed working on
-  hardware** (2026-09-19): boots identically to `era-signed.bin`, file
-  present with matching md5, script executable, `mtdinfo /dev/mtd1`
-  writable=true; the actual bootloader flash was deliberately not run
-  during that test.
+  in this image touches mtd0/mtd1 on its own. **Rebuilt 2026-09-20**
+  alongside `era-signed.bin` (same rootfs/package set, same caveat: this
+  specific installer wrapping wasn't itself re-flashed this round — see
+  above). Confirmed present with matching md5 and `mtdinfo /dev/mtd1`
+  writable=true as of the 2026-09-19 build; the actual bootloader flash
+  was deliberately not run during that or this test.
+- `vmg8825-t50-era-signed-locked.bin` — same rootfs/kernel as
+  `era-signed.bin`, wrapped for the bootloader-locked (patched mtd0)
+  boot path instead of plain MAIN. **Confirmed working on hardware**
+  2026-09-20: this exact file was flashed and booted via
+  `bldr-patch/dev_flash_cycle.py` — clean boot, flag stayed at 0, all
+  new packages and the RAM bump verified live (see above).
+- `vmg8825-t50-initramfs-kernel.bin` — a full OpenWrt kernel+rootfs that
+  boots straight from RAM via `bldr-patch/netboot.py`, no flash writes
+  at all. See `install-guide/README.md` §2b. Useful for trying WiFi/LAN/
+  USB before deciding whether to flash anything. **Rebuilt 2026-09-20**
+  with the same package/RAM changes as the images above; not
+  independently netboot-tested this round.
 
 ## Building your own
 

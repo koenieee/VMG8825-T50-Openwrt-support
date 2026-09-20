@@ -213,6 +213,43 @@
 			label = "rootfs_data";
 			reg = <0x98e0000 0x5200000>;
 		};
+
+		/*
+		 * Newly-discovered tail of the 256MiB chip, past the end of
+		 * "misc"/reservearea (0xeae0000) -- see the WiFi comment below
+		 * for how it was found. Holds two real, per-radio, per-UNIT
+		 * MT7615 calibration structures (19880 bytes each, 128KiB
+		 * apart). Deliberately read via nvmem-cells below instead of
+		 * copying the bytes into the devicetree: this data is specific
+		 * to the one physical router it was dumped from (it embeds a
+		 * real MAC address and per-chain TX trim values), so baking it
+		 * into the shared .dts would ship THAT ONE unit's calibration
+		 * to every device flashed with this image. Reading it live
+		 * from each unit's own flash at this offset is the correct,
+		 * per-device-safe approach -- same nvmem-cells pattern already
+		 * used by en751221_tplink_archer-vr1200v-v2.dts in this same
+		 * tree. Only a 256KiB slice is mapped; the remaining ~20.75MiB
+		 * of this tail stays unmapped/unused.
+		 */
+		partition@eae0000 {
+			label = "wifi-caldata";
+			reg = <0xeae0000 0x40000>;
+			read-only;
+
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				eeprom_radio0: eeprom@0 {
+					reg = <0x0 0x4da8>;
+				};
+
+				eeprom_radio1: eeprom@20000 {
+					reg = <0x20000 0x4da8>;
+				};
+			};
+		};
 	};
 };
 
@@ -221,40 +258,42 @@
  * (ra0-ra3 / rai0-rai3 in the vendor log). The EN751627 exposes two PCIe
  * links to the same chip, same as the EX3301-T0 reference board.
  *
- * This unit's MT7615E card has no valid factory WiFi calibration
- * anywhere -- not in the chip's internal eFuse (empty: dmesg reports
- * "Invalid MAC address, using random address"; iwinfo txpowerlist shows
- * only "0 dbm (1 mW)"), and not in flash: the OEM driver's own fallback
- * path (`&factory 0x0000`, and its own cfg_manager's secondary fallback
- * at partition-relative offset 0x9000) both resolve to OEM F-Secure
- * "SENSE SDK" filesystem data, not calibration data -- confirmed by
- * reading those exact offsets directly via the bootloader (`ATRF`,
- * bypassing Linux/UBI entirely). This board has no onboard SPI eeprom
- * chip either (no i2c/spi node, no bitbang-eeprom code in the OEM
- * driver) -- the OEM driver falls back to the same internal-eFuse
- * mechanism mainline mt76 does. This matches a documented, known
- * MT7615E issue class (some MT7615E mPCIe cards ship with no onboard
- * eeprom at all) -- see
- * https://tmshlvck.github.io/blog/2025/12/04/2025-12-mt7615e-eeprom-bpir4/
- * and https://forum.openwrt.org/t/unsupported-sercomm-rp324-c-mt7615-low-tx-power-incomplete-eeprom-calibration-issue/248792 --
- * not something specific to a wrong partition offset on this board.
+ * CORRECTION: this unit DOES have real per-radio factory calibration in
+ * flash -- it was just never at any offset previously checked. `&factory
+ * 0x0000` and cfg_manager's fallback at partition-relative offset 0x9000
+ * do land in OEM F-Secure "SENSE SDK" data as documented before, but
+ * that's only true of the first ~36MiB of the "misc"/reservearea
+ * partition. The OEM boot log's "Creating 13 MTD partitions" was never
+ * fully accounted for (only 8 partitions are named/sized in our notes) --
+ * the ~21MiB tail of the 256MiB chip, past the end of "misc" (0xeae0000
+ * onward), was never carved into a DT partition or scanned at all. A raw
+ * byte-signature scan of the full NAND dump found two valid, distinct,
+ * populated MT7615 eeprom structures right there (0x0eae0000 and
+ * 0x0eb00000, 128KiB apart -- one per radio); see the new
+ * "wifi-caldata" partition above.
  *
- * FIX: since there is no real per-unit calibration to recover, load a
- * known-good GENERIC MT7615 eeprom image inline via
- * mediatek,eeprom-data (chip-id 0x7615 verified at offset 0, sourced
- * from the blog above) instead of pointing at flash. This gives normal
- * TX power / RX sensitivity instead of the ~1mW/random-MAC safe
- * defaults, at the cost of not being this unit's individual factory
- * calibration. Both radios share the same generic blob (identical
- * calibration data at the same eeprom offsets), so each gets an
- * explicit local-mac-address override instead of the eeprom's built-in
- * MAC, taken from this unit's REAL factory-assigned block (from
- * bootloader `ATSH`: Serial <YOUR-SERIAL>, First MAC AABBCCDDEE10, Last
- * MAC AABBCCDDEE1F, 16 addresses) so both radios get distinct,
- * genuinely-this-unit's MAC addresses instead of colliding or random
- * ones. Replace both the eeprom blob and the MAC addresses with your
- * own unit's, if it has them -- this generic blob is only needed for
- * cards with no calibration of their own.
+ * FIX: each radio reads its OWN calibration live from flash at boot via
+ * nvmem-cells (see "wifi-caldata"/nvmem-layout above), NOT a static
+ * mediatek,eeprom-data blob. A static blob would bake THIS ONE unit's
+ * dumped bytes (including a real, per-unit MAC address) into every image
+ * built from this .dts, which would be wrong for anyone else's hardware.
+ * mt76_get_of_eeprom() (drivers/net/wireless/mediatek/mt76/eeprom.c)
+ * checks for an inline `mediatek,eeprom-data` property FIRST, before ever
+ * trying mtd/nvmem, so the two are mutually exclusive by construction --
+ * this device must not carry an inline blob. Both radios still get an
+ * explicit local-mac-address override (unchanged from before), so the
+ * MAC embedded in each unit's own eeprom data is never actually used.
+ * Same nvmem-cells pattern already used by
+ * en751221_tplink_archer-vr1200v-v2.dts in this tree.
+ *
+ * UNTESTED ON REAL HARDWARE YET -- verify iwinfo txpowerlist / actual
+ * signal strength against the previous generic-blob baseline. The
+ * generic-blob include above is left in place, unreferenced, as a manual
+ * fallback: if a given unit's flash at this offset ever reads back
+ * empty/invalid, swap that radio's node back to
+ * `mediatek,eeprom-data = /bits/ 8 <MT7615_GENERIC_EEPROM>;` (removing
+ * its nvmem-cells property) rather than relying on any automatic
+ * runtime fallback -- there isn't one.
  */
 &pcie0 {
 	status = "okay";
@@ -268,7 +307,8 @@
 		reg = <0x0000 0 0 0 0>;
 		big-endian;
 		local-mac-address = [AA BB CC DD EE 10];
-		mediatek,eeprom-data = /bits/ 8 <MT7615_GENERIC_EEPROM>;
+		nvmem-cells = <&eeprom_radio0>;
+		nvmem-cell-names = "eeprom";
 	};
 };
 
@@ -286,7 +326,8 @@
 		reg = <0x0000 0 0 0 0>;
 		big-endian;
 		local-mac-address = [AA BB CC DD EE 11];
-		mediatek,eeprom-data = /bits/ 8 <MT7615_GENERIC_EEPROM>;
+		nvmem-cells = <&eeprom_radio1>;
+		nvmem-cell-names = "eeprom";
 	};
 };
 

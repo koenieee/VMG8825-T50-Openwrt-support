@@ -7,8 +7,18 @@
 # bands, and OpenWrt's wireless auto-detect defaults both to 5g -- two
 # overlapping 5GHz APs, no 2.4GHz coverage. Split radio1 to 2g for real
 # dual-band. See NEXT_STEPS.md "WiFi".
+#
+# NOTE: band alone isn't enough -- auto-detect also stamped radio1 with
+# channel='36' and htmode='VHT80', both 5GHz-only values. Left in place
+# they made mac80211/hostapd fall back to a degraded config on radio1:
+# confirmed live on HW as Tx-Power 10dBm on the 2.4GHz radio vs 18dBm on
+# the (correctly configured) 5GHz radio0. VHT isn't valid on 2.4GHz for
+# this chip anyway (iwinfo reports phy1 HW mode as 802.11n/g/b, no ac),
+# so reset both to real 2.4GHz defaults alongside the band flip.
 [ -n "$(uci -q get wireless.radio1)" ] && {
 	uci set wireless.radio1.band='2g'
+	uci set wireless.radio1.channel='auto'
+	uci set wireless.radio1.htmode='HT20'
 	uci commit wireless
 }
 

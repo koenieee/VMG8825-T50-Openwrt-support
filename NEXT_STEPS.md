@@ -179,11 +179,79 @@ give `rootfs_data` a healthy margin above the 17-LEB minimum.
 
 ## WiFi
 
+**Real per-radio calibration found and wired in (2026-09-20), VERIFIED ON
+HARDWARE.** The "no valid factory WiFi calibration anywhere" finding
+documented for the generic-blob fix
+(`dts/en751627_zyxel_vmg8825-t50-mt7615-eeprom.dtsi`) only checked
+`&factory 0x0000` and cfg_manager's fallback (partition-relative 0x9000) —
+both inside the first ~36MiB of the 118MiB "misc"/reservearea partition. It
+never checked past reservearea's own declared end (`0xeae0000`): the OEM
+boot log's "Creating 13 MTD partitions" is only 8 partitions
+named/sized in our notes, leaving ~21MiB of the 256MiB chip
+(`0xeae0000`-`0x10000000`) that was never carved into a DT partition or
+scanned at all. A byte-signature scan of the full NAND dump
+(`firmware/vmg8825-t50-mtd0-full-256M.bin`) for `MT_EE_CHIP_ID` (LE
+`0x7615` at field offset 0) found two well-formed, populated, DISTINCT
+19880-byte MT7615 eeprom structures 128KiB apart, right at that boundary:
+`0x0eae0000` (radio0) and `0x0eb00000` (radio1).
+
+First implementation attempt copied these bytes verbatim into a new
+`.dtsi` and loaded them via `mediatek,eeprom-data` (a static, compiled-in
+blob) — **wrong, caught before shipping**: that bakes ONE specific unit's
+per-device calibration (and its real, unique MAC address) into every
+image built from this `.dts`, which is actively harmful to anyone else
+flashing this port onto their own T50. Fixed instead by adding a
+`wifi-caldata` MTD partition at `0xeae0000` (256KiB, covering both
+19880-byte/`0x4da8`-byte structures 128KiB apart) with an `nvmem-layout`
+child exposing `eeprom_radio0`/`eeprom_radio1` cells, and pointing each
+`wifi@0,0` node at its own cell via `nvmem-cells`/`nvmem-cell-names`
+instead of an inline blob — same pattern already used by
+`en751221_tplink_archer-vr1200v-v2.dts` in this tree. This makes each
+physical unit read its own live calibration from its own flash at boot,
+same as the OEM firmware would. `mt76_get_of_eeprom()` tries an inline
+`mediatek,eeprom-data` property before ever trying nvmem/mtd, so the two
+are mutually exclusive — the old per-unit-bytes `.dtsi` file was deleted
+outright rather than left unreferenced. `local-mac-address` overrides
+are unchanged, so the MAC embedded in each unit's own eeprom is never
+actually used.
+
+**Confirmed on real hardware (2026-09-20):** flashed, booted, `iwinfo`
+shows both radios reading their own live per-unit calibration with no
+eeprom/nvmem errors — radio0 (5GHz, STA) `Tx-Power: 18 dBm`, radio1
+(2.4GHz, AP) `Tx-Power: 10 dBm`, both far above the ~5dBm both radios
+were stuck at under the old shared generic blob. If this ever regresses
+(e.g. the offset turns out to be stale/orphaned data on some other
+unit, or reads back empty/invalid), fall back per-radio to
+`mediatek,eeprom-data = /bits/ 8 <MT7615_GENERIC_EEPROM>;` (drop the
+node's `nvmem-cells` property) — there is no automatic runtime fallback
+between the two.
+
+The 18dBm/10dBm asymmetry between radios was investigated and is **not
+a bug**: raw bytes at the documented mt7615 eeprom field offsets
+(`MT_EE_TX0_2G_TARGET_POWER` @0x058, `MT_EE_TX0_5G_G0_TARGET_POWER`
+@0x070, `NIC_CONF_0/1`, per-rate power tables) differ consistently
+between the radio0 and radio1 dumps — lower across the board for
+radio1, not zero/erased/duplicated — meaning both offsets are landing
+on real, distinct, well-formed calibration data. This looks like a
+genuine per-unit difference between the two physical MT7615 daughter
+cards (PA binning / antenna-gain calibration done differently at the
+factory for the two radio positions), confirmable only by comparing
+against a second physical unit.
+
 Both MT7615 radios default to `5g`; a board-specific uci-defaults script
-(`base-files/etc/uci-defaults/05_vmg8825-t50-wifi-band-split`) now flips
+(`base-files/etc/uci-defaults/05_vmg8825-t50-wifi-band-split`) flips
 `radio1` to `2g` on first boot for real dual-band instead of two
-overlapping 5 GHz APs — untested on real hardware yet, verify after
-flashing.
+overlapping 5 GHz APs. **Fixed 2026-09-20:** the script originally only
+flipped `band`, leaving `channel='36'`/`htmode='VHT80'` (5GHz-only
+values) stamped on the 2.4GHz radio by OpenWrt's auto-detect; now also
+resets `channel='auto'`/`htmode='HT20'`. Verified live by applying the
+same values by hand (uci-defaults itself won't re-fire on an
+already-provisioned unit — even `firstboot -y` only erases regular
+overlay files, not the whiteout markers that record which
+uci-defaults scripts already ran, so a true re-test needs a full UBI
+reformat, not done here) — channel/HT mode came up correct
+(`Channel: 1 (2.412 GHz)`, `HT Mode: HT20`), though as expected this
+alone doesn't move the 10dBm ceiling (see calibration note above).
 
 The STA-mode hang below is a separate, upstream `mt76`/mt7615
 firmware-stability class of bug (see

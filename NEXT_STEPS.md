@@ -73,26 +73,36 @@ fallback). `lan3` (cable connected) negotiated 1Gbps/Full,
 `carrier=1`, live non-zero RX/TX counters through `br-lan`. LAN1/2/4
 were not individually cable-tested this round.
 
-**Open question this raises for WAN, read before trusting the WAN
-notes below:** this driver's `en75_probe()` derives a runtime
-`has_switch_regs` flag from `resource_size(reg) >= sizeof(struct
-en751221_regs)` (`0x10000`). With `reg` now `0x8000`, that flag is
-`false` for this board, so `en75_probe()`'s switch-register pokes —
+**Resolved (2026-09-20, cable-swap tested):** the driver's runtime
+`has_switch_regs` flag (`resource_size(reg) >= sizeof(struct
+en751221_regs)`, i.e. `0x10000`) is now `false` for this board since
+`reg` shrank to `0x8000`, so `en75_probe()`'s switch-register pokes —
 including `002-mt7530-embedded-phy-init.patch`'s embedded-PHY
-calibration and its port-4 PCR-matrix fix, both aimed at WAN — never
-run any more. Separately, that PCR-matrix fix targeted switch port
-index 4 at MDIO address `0xc`, which is the *same* MDIO address the
-new DSA devicetree assigns to `lan4`. It's not established whether
-"WAN" in the debugging history below and `lan4` in the new DSA
-devicetree are the same physical RJ45 jack or two different ones —
-nobody has cable-swap-tested LAN4 vs. the dedicated ETHWAN jack. Until
-that's done, treat both the WAN history below and the `lan4` label as
-unconfirmed for this specific port.
+calibration and its port-4 PCR-matrix fix, both aimed at WAN — no
+longer run; that history is dead code under DSA. Separately: a cable
+was plugged into the physical **blue WAN jack** and `lan4` (not
+`eth1`) immediately showed `carrier=1`, `speed=1000`,
+`mt7530-mmio ... lan4: Link is Up - 1Gbps/Full`, and live non-zero
+RX/TX counters in `/proc/net/dev`. `eth1` (`gmac1`) showed no traffic
+at all despite `carrier` sysfs reporting `1` (stale/default state, not
+a real managed link — consistent with `gmac1`'s external PHY never
+being initialized in software). **Conclusion: the port silkscreened
+"WAN" is switch port 4 (`lan4`), not a separate `gmac1` uplink.** The
+WAN debugging history below and its `002-...patch` fixes were chasing
+bugs on what is, physically, the same jack DSA now calls `lan4` —
+useful history, but the fixes themselves are superseded/unreachable
+now that DSA owns port 4. `gmac1`/`eth1` appears to be unused/dead
+hardware on this board.
 
 ### WAN (`gmac1`/ETHWAN) — pre-DSA debugging history (now dead code, see above)
 
-- **WAN (`gmac1`/ETHWAN) needs re-testing with a cable in WAN — this is
-  the single highest-priority open item.** Sequence of bugs found and
+- **Resolved 2026-09-20: the WAN jack is `lan4`, not `gmac1`/`eth1` —
+  see the cable-swap test above.** LAN4/WAN now works via DSA the same
+  way LAN1-3 do (port 4 gets its forwarding/PCR setup from the in-tree
+  `mt7530` driver, not from the dead-code fixes below), confirmed with
+  a live 1Gbps link and real traffic. The `002-...patch` fixes below
+  are left as historical debugging notes only — they no longer run.
+  Sequence of bugs found and
   fixed on the WAN path, in order, only the first of which was actually
   confirmed against real sustained traffic afterward:
   1. PHY calibration value fixed (`0x1900`, not `0x1d00`) — confirmed:

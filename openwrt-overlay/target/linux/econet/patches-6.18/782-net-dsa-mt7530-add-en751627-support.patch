@@ -1,0 +1,78 @@
+From: Zyxel VMG8825-T50 OpenWrt port
+Subject: net: dsa: mt7530: add EN751627 support
+
+EN751627 (EN7516/EN7527 family, e.g. Zyxel VMG8825-T50) integrates the
+same MT7530-derivative switch as EN7528, memory-mapped at the same
+offset scheme. Confirmed live on a VMG8825-T50: the switch's CREV
+register at switch-base + 0x7ffc reads 0x7530 in its top 16 bits, and
+the out-of-tree econet-eth driver's reverse-engineered PHY_IAC
+bit-bang code already targets the identical switch base (0x1fb58000)
+and MT753X_PMCR_P()/MT753X_MFC offsets used here.
+
+Port layout matches EN7528 exactly: 4 user ports (1-4) wired to
+integrated Gigabit PHYs at MDIO addresses 9-12 on the switch's internal
+MDIO bus, CPU port (port 6) connected to the SoC Ethernet MAC at a
+fixed 1000 Mbps full duplex link. Reuse en7528_mac_port_get_caps() and
+mt7988_setup()/the MT7531 indirect PHY accessors as-is.
+
+Leave LPI capabilities empty for EN751627 too (same GPHY IP as EN7528,
+same EEE-instability rationale from the EN7528 patch, unconfirmed but
+precautionary pending a live EEE test on this board).
+
+--- a/drivers/net/dsa/mt7530-mmio.c
++++ b/drivers/net/dsa/mt7530-mmio.c
+@@ -14,6 +14,7 @@
+ 	{ .compatible = "airoha,an7583-switch", .data = &mt753x_table[ID_AN7583], },
+ 	{ .compatible = "airoha,en7581-switch", .data = &mt753x_table[ID_EN7581], },
+ 	{ .compatible = "econet,en7528-switch", .data = &mt753x_table[ID_EN7528], },
++	{ .compatible = "econet,en751627-switch", .data = &mt753x_table[ID_EN751627], },
+ 	{ .compatible = "mediatek,mt7988-switch", .data = &mt753x_table[ID_MT7988], },
+ 	{ /* sentinel */ },
+ };
+--- a/drivers/net/dsa/mt7530.h
++++ b/drivers/net/dsa/mt7530.h
+@@ -22,6 +22,7 @@
+ 	ID_EN7581 = 4,
+ 	ID_AN7583 = 5,
+ 	ID_EN7528 = 6,
++	ID_EN751627 = 7,
+ };
+ 
+ #define	NUM_TRGMII_CTRL			5
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -3051,7 +3051,7 @@
+ 	 * phylink disables EEE on these PHYs and refuses to enable it from
+ 	 * userspace.
+ 	 */
+-	if (priv->id != ID_EN7528) {
++	if (priv->id != ID_EN7528 && priv->id != ID_EN751627) {
+ 		u32 eeecr = mt7530_read(priv, MT753X_PMEEECR_P(port));
+ 
+ 		config->lpi_capabilities = MAC_100FD | MAC_1000FD | MAC_2500FD;
+@@ -3188,7 +3188,7 @@
+ 	 * interface is up.
+ 	 */
+ 	if (priv->id != ID_MT7530 && priv->id != ID_MT7621 &&
+-	    priv->id != ID_EN7528)
++	    priv->id != ID_EN7528 && priv->id != ID_EN751627)
+ 		return;
+ 
+ 	mask = BIT(cpu_dp->index);
+@@ -3396,6 +3396,16 @@
+ 		.pcs_ops = &mt7530_pcs_ops,
+ 		.sw_setup = mt7988_setup,
+ 		.phy_read_c22 = mt7531_ind_c22_phy_read,
++		.phy_write_c22 = mt7531_ind_c22_phy_write,
++		.phy_read_c45 = mt7531_ind_c45_phy_read,
++		.phy_write_c45 = mt7531_ind_c45_phy_write,
++		.mac_port_get_caps = en7528_mac_port_get_caps,
++	},
++	[ID_EN751627] = {
++		.id = ID_EN751627,
++		.pcs_ops = &mt7530_pcs_ops,
++		.sw_setup = mt7988_setup,
++		.phy_read_c22 = mt7531_ind_c22_phy_read,
+ 		.phy_write_c22 = mt7531_ind_c22_phy_write,
+ 		.phy_read_c45 = mt7531_ind_c45_phy_read,
+ 		.phy_write_c45 = mt7531_ind_c45_phy_write,

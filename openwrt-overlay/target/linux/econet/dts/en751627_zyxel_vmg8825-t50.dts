@@ -332,17 +332,23 @@
 };
 
 /*
- * Ethernet bring-up. gmac0 (LAN switch's CPU port, fixed-link, no PHY) is
- * confirmed working end-to-end on real hardware (ping + SSH over LAN1-4).
+ * Ethernet bring-up.
  *
- * gmac1 (ETHWAN) is now enabled too, but UNVERIFIED on hardware -- the
- * econet-eth driver does no PHY/link management at all (see en751627.dtsi
- * for the full explanation), so this is a pure gamble on the external WAN
- * PHY autonegotiating on its own once reset is released. Test with a cable
- * in the dedicated ETHWAN port specifically (not LAN1-4). If the "nas10"
- * interface (eth1) doesn't come up / pass traffic, the WAN PHY likely needs
- * a GPIO reset line released or actual MDIO init that this driver doesn't
- * do -- no schematic/GPIO info for this found in device-research yet.
+ * LAN1-4 now go through the on-die MT7530-class DSA `switch` (see
+ * en751627.dtsi) instead of the old econet-eth PHY_IAC bit-bang hack --
+ * gmac0 is just the switch's CPU port uplink. CONFIRMED on hardware
+ * 2026-09-20: clean boot (no panic), mt7530-mmio probes, lan1-4 DSA
+ * netdevs present, lan3 (cable connected) negotiated 1Gbps/Full with
+ * live RX/TX traffic through br-lan -- DSA wiring verified working.
+ *
+ * gmac1 (ETHWAN) is unchanged and still UNVERIFIED on hardware -- it sits
+ * outside the switch on a standalone external PHY chip that the
+ * econet-eth driver never initializes in software (see en751627.dtsi).
+ * Test with a cable in the dedicated ETHWAN port specifically (not
+ * LAN1-4). If the "nas10" interface (eth1) doesn't come up / pass
+ * traffic, the WAN PHY likely needs a GPIO reset line released or actual
+ * MDIO init that this driver doesn't do -- no schematic/GPIO info for
+ * this found in device-research yet.
  */
 &gmac0 {
 	status = "okay";
@@ -358,5 +364,29 @@
 };
 
 &gmac1 {
+	status = "okay";
+};
+
+&switch {
+	status = "okay";
+};
+
+&gsw_port1 {
+	label = "lan1";
+	status = "okay";
+};
+
+&gsw_port2 {
+	label = "lan2";
+	status = "okay";
+};
+
+&gsw_port3 {
+	label = "lan3";
+	status = "okay";
+};
+
+&gsw_port4 {
+	label = "lan4";
 	status = "okay";
 };

@@ -300,43 +300,20 @@
 	};
 
 	/*
-	 * FE/GDM/QDMA block. econet-eth driver (cjdelisle/econet_eth) added
-	 * "econet,en751627-eth" support locally (see package/kernel/econet-eth
-	 * patches/001-add-en751627-support.patch) -- struct en751221_regs
-	 * layout is reused as-is (soc_data is a single dscp_byte_swap bool,
-	 * UNVERIFIED for this SoC).
+	 * FE/GDM/QDMA block (econet-eth out-of-tree driver, cjdelisle/econet_eth,
+	 * package/kernel/econet-eth patches/001-add-en751627-support.patch).
+	 * reg is sized 0x8000 (en7528-style): the driver derives has_switch_regs
+	 * from resource_size(reg) >= sizeof(struct en751221_regs) (0x10000), so
+	 * this automatically skips its own PMCR/MFC switch pokes -- the switch
+	 * register space now belongs to the separate DSA `switch` node below.
 	 *
-	 * reg is sized 0x10000 (en751221-style, has_switch_regs=true): a
-	 * 0x8000 first attempt (has_switch_regs=false, no PMCR/MFC writes,
-	 * matching en7528.dtsi) got eth0 registered and bridged but passed
-	 * ZERO traffic in either direction on real hardware (carrier=1 from
-	 * fixed-link, but no ARP resolution at all) -- consistent with the
-	 * CPU port (mt7530-class switch, port 6/trgmii) staying isolated
-	 * without those writes. Confirmed safe to test on real hardware:
-	 * en751627 does NOT hang/crash with this reg size.
-	 *
-	 * gmac0 is the LAN switch's CPU port (fixed-link, no PHY, matches
-	 * en751221_tplink_archer-vr1200v-v2.dts). gmac1 is the discrete
-	 * ETHWAN MAC on this board (a separate interface from the LAN
-	 * switch in the OEM firmware too).
-	 *
-	 * IMPORTANT: the econet-eth driver (econet_eth.c/econet_port.c) does
-	 * NOT do any PHY/link management in software -- no phy_connect(), no
-	 * MDIO bus, no netif_carrier_*() calls anywhere. gmac0 only works
-	 * because the on-die switch ports are hardware-forced
-	 * (PMCR_FORCE_LNK, see en75_probe()). gmac1 sits entirely outside
-	 * the switch and talks to a standalone external PHY chip; the
-	 * driver is completely unaware of phy-mode/fixed-link properties on
-	 * this node (grep confirms neither is ever read), so those
-	 * DT properties are effectively board-documentation only, not
-	 * something the driver consumes. Whether gmac1 actually passes
-	 * traffic once enabled therefore depends purely on the external PHY
-	 * autonegotiating on its own once reset is released -- unverified
-	 * on real hardware, needs a cable in the ETHWAN port to confirm.
+	 * gmac0 feeds the on-die MT7530-class switch's CPU port (port 6, see
+	 * `switch` node) over an internal MAC-to-MAC link. gmac1 is the discrete
+	 * ETHWAN MAC, talking to a standalone external PHY outside the switch.
 	 */
 	ethernet: ethernet@1fb50000 {
 		compatible = "econet,en751627-eth";
-		reg = <0x1fb50000 0x10000>;
+		reg = <0x1fb50000 0x8000>;
 
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -347,14 +324,13 @@
 
 		resets = <&scu EN7523_FE_RST>,
 			 <&scu EN7523_FE_PDMA_RST>,
-			 <&scu EN7523_FE_QDMA_RST>,
-			 <&scu EN7523_GSW_RST>;
-		reset-names = "fe", "qdma0", "qdma1", "gsw";
+			 <&scu EN7523_FE_QDMA_RST>;
+		reset-names = "fe", "qdma0", "qdma1";
 
 		gmac0: mac@0 {
 			compatible = "econet,eth-mac";
 			reg = <0>;
-			phy-mode = "trgmii";
+			phy-mode = "internal";
 			status = "disabled";
 
 			fixed-link {
@@ -369,6 +345,100 @@
 			reg = <1>;
 			phy-mode = "rgmii-rxid";
 			status = "disabled";
+		};
+	};
+
+	/*
+	 * On-die MT7530-class DSA switch. Confirmed live on a VMG8825-T50:
+	 * the CREV register (switch base + 0x7ffc) reads 0x75300000 -- top
+	 * 16 bits 0x7530, same core and same base address as en7528.dtsi's
+	 * `switch` node. See target/linux/econet/patches-6.18/782-net-dsa-
+	 * mt7530-add-en751627-support.patch for the driver-side ID.
+	 *
+	 * Replaces the old econet-eth-driven PHY_IAC bit-bang bring-up
+	 * (package/kernel/econet-eth patches/002-mt7530-embedded-phy-init.patch)
+	 * with the same in-tree DSA driver every other MT7530-class board
+	 * (including EN7528, next door) uses -- real phylink-managed PHYs
+	 * instead of a hardware-forced CPU port link.
+	 */
+	switch: ethernet-switch@1fb58000 {
+		compatible = "econet,en751627-switch";
+		reg = <0x1fb58000 0x8000>;
+		resets = <&scu EN7523_GSW_RST>;
+
+		status = "disabled";
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethernet-ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			gsw_port1: ethernet-port@1 {
+				reg = <1>;
+				phy-mode = "internal";
+				phy-handle = <&gsw_phy1>;
+				status = "disabled";
+			};
+
+			gsw_port2: ethernet-port@2 {
+				reg = <2>;
+				phy-mode = "internal";
+				phy-handle = <&gsw_phy2>;
+				status = "disabled";
+			};
+
+			gsw_port3: ethernet-port@3 {
+				reg = <3>;
+				phy-mode = "internal";
+				phy-handle = <&gsw_phy3>;
+				status = "disabled";
+			};
+
+			gsw_port4: ethernet-port@4 {
+				reg = <4>;
+				phy-mode = "internal";
+				phy-handle = <&gsw_phy4>;
+				status = "disabled";
+			};
+
+			ethernet-port@6 {
+				reg = <6>;
+				ethernet = <&gmac0>;
+				phy-mode = "internal";
+
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+					pause;
+				};
+			};
+		};
+
+		mdio {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			gsw_phy1: ethernet-phy@9 {
+				compatible = "ethernet-phy-ieee802.3-c22";
+				reg = <9>;
+			};
+
+			gsw_phy2: ethernet-phy@a {
+				compatible = "ethernet-phy-ieee802.3-c22";
+				reg = <10>;
+			};
+
+			gsw_phy3: ethernet-phy@b {
+				compatible = "ethernet-phy-ieee802.3-c22";
+				reg = <11>;
+			};
+
+			gsw_phy4: ethernet-phy@c {
+				compatible = "ethernet-phy-ieee802.3-c22";
+				reg = <12>;
+			};
 		};
 	};
 };

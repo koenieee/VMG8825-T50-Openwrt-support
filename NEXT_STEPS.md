@@ -49,6 +49,48 @@ at 0.
 
 ## Ethernet
 
+### LAN1-4 via DSA (confirmed on hardware, 2026-09-20)
+
+`ethernet@1fb50000` was split into an FE/GDM/QDMA-only node (`reg`
+shrunk from `0x10000` to `0x8000`) plus a sibling
+`ethernet-switch@1fb58000` DSA node using the in-tree
+`mediatek,mt7530`/`mt7530-mmio` driver instead of the econet-eth
+out-of-tree driver's unmanaged switch bring-up. `782-net-dsa-mt7530-
+add-en751627-support.patch` adds the `ID_EN751627` variant to
+`drivers/net/dsa/mt7530.c`/`.h`/`mt7530-mmio.c`, reusing EN7528's
+`en7528_mac_port_get_caps()` and MT7531 indirect PHY accessors — the
+CREV register at switch-base + `0x7ffc` reads `0x7530` in its top 16
+bits, confirmed live on a VMG8825-T50. Ports 1-4 (MDIO addresses 9-12)
+are wired to `lan1`-`lan4`, port 6 is the CPU port (`gmac0` uplink,
+fixed 1000 Mbps FD).
+
+**Confirmed on real hardware (2026-09-20):** clean boot, no kernel
+panic, `mt7530-mmio 1fb58000.ethernet-switch` probes, `lan1`-`lan4`
+DSA netdevs present (`ip link show`), devicetree shows `ethernet@
+1fb50000` `reg` size `0x8000` and `ethernet-switch@1fb58000` present
+(confirms the real DSA-split image booted, not an old-firmware
+fallback). `lan3` (cable connected) negotiated 1Gbps/Full,
+`carrier=1`, live non-zero RX/TX counters through `br-lan`. LAN1/2/4
+were not individually cable-tested this round.
+
+**Open question this raises for WAN, read before trusting the WAN
+notes below:** this driver's `en75_probe()` derives a runtime
+`has_switch_regs` flag from `resource_size(reg) >= sizeof(struct
+en751221_regs)` (`0x10000`). With `reg` now `0x8000`, that flag is
+`false` for this board, so `en75_probe()`'s switch-register pokes —
+including `002-mt7530-embedded-phy-init.patch`'s embedded-PHY
+calibration and its port-4 PCR-matrix fix, both aimed at WAN — never
+run any more. Separately, that PCR-matrix fix targeted switch port
+index 4 at MDIO address `0xc`, which is the *same* MDIO address the
+new DSA devicetree assigns to `lan4`. It's not established whether
+"WAN" in the debugging history below and `lan4` in the new DSA
+devicetree are the same physical RJ45 jack or two different ones —
+nobody has cable-swap-tested LAN4 vs. the dedicated ETHWAN jack. Until
+that's done, treat both the WAN history below and the `lan4` label as
+unconfirmed for this specific port.
+
+### WAN (`gmac1`/ETHWAN) — pre-DSA debugging history (now dead code, see above)
+
 - **WAN (`gmac1`/ETHWAN) needs re-testing with a cable in WAN — this is
   the single highest-priority open item.** Sequence of bugs found and
   fixed on the WAN path, in order, only the first of which was actually
@@ -90,11 +132,13 @@ at 0.
     or even just a large sustained ping/transfer) — not just a link-up
     check, since link-up already passed at every stage above without
     catching bugs (2) or (4).
-- Only LAN port 1 has been individually tested with a cable; LAN2-4 sit
-  on the same switch and should come up automatically once the switch is
-  released from the CPU port, but this hasn't been separately confirmed
-  port by port.
-- The switch's embedded PHYs need an MDIO calibration sequence at
+- (Pre-DSA note, superseded 2026-09-20 — see "LAN1-4 via DSA" above.)
+  Only LAN port 1 had been individually tested with a cable under the
+  old unmanaged-bridge driver; LAN2-4 shared the same switch and should
+  have come up automatically once the switch was released from the CPU
+  port, but this wasn't separately confirmed port by port at the time.
+- (Pre-DSA note.) The switch's embedded PHYs need an MDIO calibration
+  sequence at
   startup (`en75_mt7530_embedded_phy_init()` in
   `package/kernel/econet-eth/patches/002-mt7530-embedded-phy-init.patch`)
   — without it the PHYs never link, even though the MAC registers
@@ -107,12 +151,16 @@ at 0.
 - `dscp_byte_swap = true` for `en751627_soc_data` is unverified (copied
   from EN751221 as the closest relative) — only relevant once
   QoS/DSCP marking is in play.
-- No DSA (`mediatek,mt7530`) support for this target — the switch runs
-  as an unmanaged/dumb switch in hardware (all LAN ports bridged, no
-  per-port VLAN control from Linux). Same approach as
-  `en751221_tplink_archer-vr1200v-v2.dts`.
+- (Superseded 2026-09-20 — see "LAN1-4 via DSA" above.) DSA
+  (`mediatek,mt7530`) support for LAN1-4 is now in via
+  `782-net-dsa-mt7530-add-en751627-support.patch`. `en751221`'s
+  subtarget (`en751221_tplink_archer-vr1200v-v2.dts`) still uses the
+  old unmanaged/dumb-switch approach and hasn't been touched here.
 
 ### LAN throughput (measured, 2026-09-17)
+
+*Predates the 2026-09-20 DSA switch-over above — measured against the
+old unmanaged-bridge driver, not re-run against DSA yet.*
 
 First real throughput numbers for LAN (previously only ping-confirmed).
 Measured with `iperf3` between a single LAN-connected host and the

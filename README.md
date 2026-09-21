@@ -44,6 +44,11 @@ console, and following `install-guide/README.md` step by step.
   `carrier=1` and carries no traffic. It is not wired to any socket on
   this board.
 - Hardware NAT offload (PPE) — see the performance section below.
+- Hardware watchdog — the EN751627's timer3 block (same as the EN7581's,
+  at `0x1fbf0100`) drives `/dev/watchdog0` through the in-tree
+  `airoha_wdt` driver, and `procd` pets it, so a wedged kernel reboots on
+  its own. Verified on hardware: the cdev is backed by platform device
+  `1fbf0100.watchdog`.
 - USB storage — `kmod-usb-storage`/`block-mount`/ext4+vfat+nls kmods now
   ship in the default image (previously only worked via a manual
   `apk add` during testing).

@@ -1,0 +1,21 @@
+From: OpenWrt EcoNet port
+Subject: watchdog: airoha: allow building on the EcoNet MIPS SoCs
+
+The EN751627 carries the same watchdog block as the EN7581 -- timer3 of
+the legacy timer unit at 0x1fbf0100, identical register layout -- but
+the driver is gated on ARCH_AIROHA, which only covers the ARM64 side of
+the family. The MIPS EcoNet SoCs are the same lineage (they already
+share the airoha gpio, scu, snand and uart drivers), so widen the
+dependency rather than duplicating the driver.
+
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -422,7 +422,7 @@
+ 
+ config AIROHA_WATCHDOG
+ 	tristate "Airoha EN7581 Watchdog"
+-	depends on ARCH_AIROHA || COMPILE_TEST
++	depends on ARCH_AIROHA || ECONET || COMPILE_TEST
+ 	select WATCHDOG_CORE
+ 	help
+ 	  Watchdog timer embedded into Airoha SoC. This will reboot your

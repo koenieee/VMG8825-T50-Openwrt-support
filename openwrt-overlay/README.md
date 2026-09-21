@@ -6,13 +6,28 @@ addition under `package/kernel/econet-eth/`. It already contains
 upstream's `en751221`/`en7528` boards plus our additions for the
 Zyxel VMG8825-T50.
 
-To use: clone stock OpenWrt, then copy this over the matching paths:
+To use: clone stock OpenWrt, then sync this overlay into it. Use the
+script rather than copying by hand -- a forgotten copy silently builds an
+image without your change:
 
 ```sh
 git clone https://github.com/openwrt/openwrt.git
+tools/sync-overlay.sh push      # overlay  -> openwrt/  (before a build)
+tools/sync-overlay.sh check     # exit 1 on drift, lists differing files
+tools/sync-overlay.sh pull      # openwrt/ -> overlay   (after editing in-tree)
+```
+
+The manual equivalent, if you prefer:
+
+```sh
 cp -r openwrt-overlay/target/linux/econet/* openwrt/target/linux/econet/
 cp -r openwrt-overlay/package/kernel/econet-eth/* openwrt/package/kernel/econet-eth/
 ```
+
+To build an image onto a running device, `tools/flash-openwrt.sh [HOST]`
+wraps the built `-squashfs-tclinux.trx` into an era image, verifies both
+zloader checksum gates and the md5 across the wire, then `sysupgrade`s it
+(default HOST `192.168.1.1`).
 
 ## Changes vs. upstream
 

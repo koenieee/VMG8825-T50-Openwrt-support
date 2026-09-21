@@ -110,6 +110,14 @@
 		#reset-cells = <1>;
 	};
 
+	wdt: watchdog@1fbf0100 {
+		compatible = "airoha,en7581-wdt";
+		reg = <0x1fbf0100 0x3c>;
+
+		clocks = <&scu EN7523_CLK_BUS>;
+		clock-names = "bus";
+	};
+
 	timer_hpt: timer@1fbf0400 {
 		compatible = "econet,en7528-timer";
 		reg = <0x1fbf0400 0x14>,

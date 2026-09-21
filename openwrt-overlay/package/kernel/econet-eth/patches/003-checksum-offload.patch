@@ -1,0 +1,119 @@
+--- a/econet_port.c
++++ b/econet_port.c
+@@ -8,6 +8,8 @@
+ #include <linux/skbuff.h>
+ #include <linux/etherdevice.h>
+ #include <linux/netdevice.h>
++#include <linux/ip.h>
++#include <linux/ipv6.h>
+ #include <net/dsa.h>
+ #include <linux/platform_device.h>
+ #include <linux/reset.h>
+@@ -186,6 +188,57 @@
+ 	return 0;
+ }
+ 
++/*
++ * Set the etx descriptor's IP/TCP/UDP checksum-offload bits for skb, or
++ * finish the checksum in software if the combination of protocols in skb
++ * isn't something the descriptor can express (SCTP, IPv6 extension headers
++ * before L4, etc). No-op if the stack already computed the checksum itself
++ * (skb->ip_summed != CHECKSUM_PARTIAL).
++ *
++ * ETX_ICO is only meaningful alongside ETX_TCO/ETX_UCO (it tells hardware
++ * to use the IPv4 pseudo-header when computing the L4 checksum, it isn't a
++ * standalone "also write the IPv4 header checksum" feature -- the stack
++ * always computes that one itself regardless of CHECKSUM_PARTIAL), so it's
++ * only set together with one of them, never alone.
++ */
++static void en75_dev_xmit_csum(struct sk_buff *skb, struct etx *etx)
++{
++	bool is_ipv4;
++	u8 l4_proto;
++
++	if (skb->ip_summed != CHECKSUM_PARTIAL)
++		return;
++
++	switch (skb->protocol) {
++	case htons(ETH_P_IP):
++		is_ipv4 = true;
++		l4_proto = ip_hdr(skb)->protocol;
++		break;
++	case htons(ETH_P_IPV6):
++		is_ipv4 = false;
++		l4_proto = ipv6_hdr(skb)->nexthdr;
++		break;
++	default:
++		skb_checksum_help(skb);
++		return;
++	}
++
++	switch (l4_proto) {
++	case IPPROTO_TCP:
++		set_etx_tco(etx, true);
++		break;
++	case IPPROTO_UDP:
++		set_etx_uco(etx, true);
++		break;
++	default:
++		skb_checksum_help(skb);
++		return;
++	}
++
++	if (is_ipv4)
++		set_etx_ico(etx, true);
++}
++
+ static netdev_tx_t en75_dev_xmit(struct sk_buff *skb, struct net_device *dev)
+ {
+ 	struct en75_gdm_port *port = netdev_priv(dev);
+@@ -205,6 +258,8 @@
+ 	if (skb_linearize(skb))
+ 		goto error;
+ 
++	en75_dev_xmit_csum(skb, &msg.etx);
++
+ 	netdev_tx_sent_queue(txq, len);
+ 
+ 	ret = en75_qdma_xmit(port->qdma, skb, &msg, 0);
+@@ -436,16 +491,36 @@
+ 	 * Therefore most features are not that useful.
+ 	 *
+ 	 * NETIF_F_TSO | NETIF_F_TSO6:
+-	 *   - Supported in EN751627, not in EN751221, not used in forwarding.
++	 *   - Supported in EN751627, not in EN751221. TODO: wire up GSO
++	 *     segmentation via QDMA (needs per-segment descriptor handling
++	 *     in en75_qdma_xmit()); not implemented yet.
++	 *
++	 * NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM:
++	 *   - en75_dev_xmit_csum() implements TX checksum offload via the etx
++	 *     descriptor's ICO/TCO/UCO bits, but is NOT enabled here: tested
++	 *     live on hardware 2026-09-20 and it broke TCP outright (3-way
++	 *     handshake never completes -- ICMP, which doesn't go through
++	 *     this path, worked fine throughout, pointing at a bad checksum
++	 *     being written and silently dropped by the peer). Root cause
++	 *     not found -- the ICO/TCO/UCO bit semantics in qdma_desc.h are
++	 *     themselves reverse-engineered ("probably"/"maybe"), so treat
++	 *     en75_dev_xmit_csum() as unverified scaffolding, not a working
++	 *     feature, until someone confirms the actual descriptor format
++	 *     (vendor SDK, or byte-level capture of a known-good frame).
+ 	 *
+-	 * NETIF_F_IP_CSUM | NETIF_F_RXCSUM | NETIF_F_IPV6_CSUM:
+-	 *   - Supported but disabled for simplicity.
++	 * NETIF_F_RXCSUM:
++	 *   - Still not enabled: RX only reports the ERX_L4F failure flag,
++	 *     which isn't fine-grained enough to prove a specific L4
++	 *     checksum was actually verified (see en75_qdma_rx_process()),
++	 *     so we don't advertise it as a user-toggleable feature -- but
++	 *     we do use it to fall back to software verification instead of
++	 *     blindly trusting hardware.
+ 	 *
+ 	 * NETIF_F_HW_TC:
+ 	 *   - TODO: When we get the PPE working, we will enable this for
+ 	 *           TC_SETUP_BLOCK / TC_SETUP_FT for NAT flow-table offloading.
+ 	 */
+-	ndev->hw_features = 0;
++	ndev->hw_features = 0; /* TX csum offload left disabled, see comment above */
+ 
+ 	ndev->features |= ndev->hw_features;
+ 	ndev->vlan_features = ndev->hw_features;

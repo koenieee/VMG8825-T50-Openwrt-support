@@ -1,0 +1,68 @@
+From: Zyxel VMG8825-T50 OpenWrt port
+Subject: net: dsa: mt7530: give EN751627 its fifth user port
+
+The EN7528 capability table starts at port 1, and EN751627 was made to
+borrow it. That leaves port 0 with an empty supported_interfaces, so
+phylink refuses it:
+
+  (null): phylink: error: empty supported_interfaces
+  error creating PHYLINK: -22
+  lan0 (uninitialized): error -22 setting up PHY for tree 0, switch 0, port 0
+
+The VMG8825-T50 has five RJ45 sockets and only four of them reach an
+interface, so one socket is dead: a cable in it moves no packets on any
+port and raises carrier nowhere. Port 0 is the missing one, with its
+PHY at MDIO address 8, continuing the address = port + 8 pattern the
+other four follow. EN7581, the other five-port EcoNet switch in this
+driver, already describes ports 0 through 4.
+
+Give EN751627 its own capability function rather than widening the
+EN7528 one: whether that SoC wires port 0 is not something this board
+can answer.
+
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -2851,8 +2851,34 @@
+ 		config->mac_capabilities |= MAC_1000FD;
+ 		break;
+ 	}
+ }
+ 
++static void en751627_mac_port_get_caps(struct dsa_switch *ds, int port,
++				       struct phylink_config *config)
++{
++	switch (port) {
++	/* Five user ports, 0-4, each on an integrated Gigabit PHY at MDIO
++	 * address port + 8. There is no MII pinout.
++	 */
++	case 0 ... 4:
++		__set_bit(PHY_INTERFACE_MODE_INTERNAL,
++			  config->supported_interfaces);
++
++		config->mac_capabilities |= MAC_10 | MAC_100 | MAC_1000FD;
++		break;
++
++	/* Port 6 is connected to SoC's GMAC at 1000 Mbps full duplex. There
++	 * is no MII pinout.
++	 */
++	case 6:
++		__set_bit(PHY_INTERFACE_MODE_INTERNAL,
++			  config->supported_interfaces);
++
++		config->mac_capabilities |= MAC_1000FD;
++		break;
++	}
++}
++
+ static void
+ mt7530_mac_config(struct dsa_switch *ds, int port, unsigned int mode,
+ 		  phy_interface_t interface)
+@@ -3409,7 +3433,7 @@
+ 		.phy_write_c22 = mt7531_ind_c22_phy_write,
+ 		.phy_read_c45 = mt7531_ind_c45_phy_read,
+ 		.phy_write_c45 = mt7531_ind_c45_phy_write,
+-		.mac_port_get_caps = en7528_mac_port_get_caps,
++		.mac_port_get_caps = en751627_mac_port_get_caps,
+ 	},
+ };
+ EXPORT_SYMBOL_GPL(mt753x_table);

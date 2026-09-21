@@ -1,0 +1,299 @@
+--- a/econet_eth.h
++++ b/econet_eth.h
+@@ -167,6 +167,13 @@
+ 	struct device *dev;
+ };
+ 
++/*
++ * True when the PPE hardware flow-offload engine has been brought up
++ * (module parameter ppe_offload=1). The GDM ports consult this to decide
++ * whether ingress traffic is forwarded to the CPU or into the PPE.
++ */
++bool en75_ppe_enabled(void);
++
+ /* Called in softirq context */
+ int en75_rx_before_recv(struct en75_eth *eth, struct sk_buff *skb,
+ 			enum etx_fport sport);
+--- a/econet_eth.c
++++ b/econet_eth.c
+@@ -147,6 +147,26 @@
+ _Static_assert(sizeof(struct en751221_regs) == 0x10000, "en751221_regs size incorrect");
+ 
+ /*
++ * Set once en75_ppe_start() has brought the PPE up. Declared here rather
++ * than beside the rest of the PPE code because en75_remove() -- which
++ * appears earlier in the file -- has to clear it.
++ */
++static bool en75_ppe_running;
++
++/*
++ * Kept so the file can be torn down again: it hangs off the debugfs root
++ * and captures the ioremapped register pointer, so leaving it behind makes
++ * a module reload fail with "already exists" and any read of the stale
++ * entry dereference freed iomem.
++ */
++static struct dentry *en75_ppe_dir;
++
++bool en75_ppe_enabled(void)
++{
++	return en75_ppe_running;
++}
++
++/*
+  * Internal MDIO controller ("PHY_IAC" in MediaTek terms), used to reach
+  * the switch's embedded Gigabit PHYs directly -- separate from the
+  * MT753X_PMCR_P()/MT753X_MFC port-config registers above.
+@@ -481,6 +501,9 @@
+ 	if (!eth)
+ 		return;
+ 
++	en75_ppe_running = false;
++	debugfs_remove(en75_ppe_dir);
++	en75_ppe_dir = NULL;
+ 	en75_debugfs_exit(eth->debug);
+ 
+ 	for (i = 0; i < ARRAY_SIZE(eth->qdma); i++)
+@@ -550,11 +573,182 @@
+ #define PPE_CAH_WDATA		0x32c
+ #define PPE_CAH_RDATA		0x330
+ 
++/* PPE_GLO_CFG */
++#define PPE_GLO_CFG_EN			BIT(0)
++#define PPE_GLO_CFG_IP4_L4_CS_DROP	BIT(2)
++#define PPE_GLO_CFG_IP4_CS_DROP		BIT(3)
++#define PPE_GLO_CFG_FLOW_DROP_UPDATE	BIT(9)
++
++/* PPE_FLOW_CFG */
++#define PPE_FLOW_CFG_IP4_TCP_FRAG	BIT(6)
++#define PPE_FLOW_CFG_IP4_UDP_FRAG	BIT(7)
++#define PPE_FLOW_CFG_IP6_3T_ROUTE	BIT(8)
++#define PPE_FLOW_CFG_IP6_5T_ROUTE	BIT(9)
++#define PPE_FLOW_CFG_IP6_6RD		BIT(10)
++#define PPE_FLOW_CFG_IP4_NAT		BIT(12)
++#define PPE_FLOW_CFG_IP4_NAPT		BIT(13)
++#define PPE_FLOW_CFG_IP4_DSLITE		BIT(14)
++#define PPE_FLOW_CFG_IP4_NAT_FRAG	BIT(17)
++
++/* PPE_IP_PROT_CHK */
++#define PPE_IP_PROT_CHK_IPV4		GENMASK(15, 0)
++#define PPE_IP_PROT_CHK_IPV6		GENMASK(31, 16)
++
++/* PPE_TB_CFG */
++#define PPE_TB_CFG_ENTRY_NUM		GENMASK(2, 0)
++#define PPE_TB_CFG_ENTRY_80B		BIT(3)
++#define PPE_TB_CFG_SEARCH_MISS		GENMASK(5, 4)
++#define PPE_TB_CFG_AGE_NON_L4		BIT(7)
++#define PPE_TB_CFG_AGE_UNBIND		BIT(8)
++#define PPE_TB_CFG_AGE_TCP		BIT(9)
++#define PPE_TB_CFG_AGE_UDP		BIT(10)
++#define PPE_TB_CFG_AGE_TCP_FIN		BIT(11)
++#define PPE_TB_CFG_KEEPALIVE		GENMASK(13, 12)
++#define PPE_TB_CFG_HASH_MODE		GENMASK(15, 14)
++#define PPE_TB_CFG_SCAN_MODE		GENMASK(17, 16)
++
++#define PPE_SEARCH_MISS_FORWARD_BUILD	3
++#define PPE_KEEPALIVE_DISABLE		0
++#define PPE_SCAN_MODE_CHECK_AGE		1
++
++#define PPE_TB_USED_NUM			GENMASK(13, 0)
++
++#define PPE_BNDR_BIND			GENMASK(15, 0)
++#define PPE_BNDR_PREBIND		GENMASK(31, 16)
++#define PPE_BIND_LMT_0_QUARTER		GENMASK(13, 0)
++#define PPE_BIND_LMT_0_HALF		GENMASK(29, 16)
++#define PPE_BIND_LMT_1_FULL		GENMASK(13, 0)
++#define PPE_BIND_LMT_1_NON_L4		GENMASK(23, 16)
++#define PPE_UNB_AGE_DELTA		GENMASK(7, 0)
++#define PPE_UNB_AGE_MIN_PACKETS		GENMASK(31, 16)
++#define PPE_BND_AGE_0_DELTA_UDP		GENMASK(14, 0)
++#define PPE_BND_AGE_0_DELTA_NON_L4	GENMASK(30, 16)
++#define PPE_BND_AGE_1_DELTA_TCP		GENMASK(14, 0)
++#define PPE_BND_AGE_1_DELTA_TCP_FIN	GENMASK(30, 16)
++
++#define PPE_CAH_CTRL_EN			BIT(0)
++#define PPE_CAH_CTRL_X_MODE		BIT(9)
++
++/*
++ * FOE table geometry. PPE_TB_CFG_ENTRY_NUM is log2 of the entry count in
++ * units of 1024, so shift 0 is the smallest legal table. Upstream uses
++ * shift 4 (16384 entries), but a 1024-entry table is 80 KiB of coherent
++ * DMA instead of 1.25 MiB, which is the right trade on a 128 MiB router
++ * while the binding path is still being brought up.
++ *
++ * 80-byte entries: PPE_TB_CFG_ENTRY_80B is set for everything before
++ * MediaTek's netsys v3, and the OEM's hw_nat v2.01 uses the same size.
++ */
++#define EN75_PPE_ENTRIES_SHIFT		0
++#define EN75_PPE_ENTRIES		(1024 << EN75_PPE_ENTRIES_SHIFT)
++#define EN75_PPE_ENTRY_SIZE		80
++
++static bool ppe_offload;
++module_param(ppe_offload, bool, 0444);
++MODULE_PARM_DESC(ppe_offload,
++		 "Bring up the PPE hardware flow-offload engine and route GDM ingress through it (default off)");
++
++/*
++ * Single FOE table for the SoC's single PPE instance. Kept file-static
++ * rather than in struct en75_eth because there is exactly one of each and
++ * econet_port.c needs to know whether it came up.
++ */
++static void *en75_foe_table;
++static dma_addr_t en75_foe_phys;
++
+ static u32 en75_ppe_rd(struct en751221_regs __iomem *regs, u32 off)
+ {
+ 	return ioread32(&regs->ppe[off / sizeof(u32)]);
+ }
+ 
++static void en75_ppe_wr(struct en751221_regs __iomem *regs, u32 off, u32 val)
++{
++	iowrite32(val, &regs->ppe[off / sizeof(u32)]);
++}
++
++/*
++ * Bring up the PPE: give it a zeroed FOE table, tell it how to age and
++ * bind flows, and enable it.
++ *
++ * This is a trimmed transcription of mtk_ppe_start() from upstream's
++ * drivers/net/ethernet/mediatek/mtk_ppe.c -- the register block is the
++ * same IP, so the programming sequence is too. Left out for now are the
++ * accounting/MIB table and the netsys-v2+ paths, neither of which applies
++ * here.
++ *
++ * Nothing binds flows yet, so with this alone every packet still takes the
++ * search-miss path to the CPU. What it buys is the RX descriptor's
++ * ppe_entry field becoming meaningful, which is the prerequisite for the
++ * binding logic and can be checked in /sys/kernel/debug/ppe_regs.
++ */
++static int en75_ppe_start(struct device *dev, struct en751221_regs __iomem *regs)
++{
++	u32 val;
++
++	en75_foe_table = dmam_alloc_coherent(dev,
++					     EN75_PPE_ENTRIES * EN75_PPE_ENTRY_SIZE,
++					     &en75_foe_phys, GFP_KERNEL);
++	if (!en75_foe_table)
++		return -ENOMEM;
++
++	en75_ppe_wr(regs, PPE_TB_BASE, en75_foe_phys);
++
++	val = PPE_TB_CFG_AGE_NON_L4 |
++	      PPE_TB_CFG_AGE_UNBIND |
++	      PPE_TB_CFG_AGE_TCP |
++	      PPE_TB_CFG_AGE_UDP |
++	      PPE_TB_CFG_AGE_TCP_FIN |
++	      PPE_TB_CFG_ENTRY_80B |
++	      FIELD_PREP(PPE_TB_CFG_SEARCH_MISS, PPE_SEARCH_MISS_FORWARD_BUILD) |
++	      FIELD_PREP(PPE_TB_CFG_KEEPALIVE, PPE_KEEPALIVE_DISABLE) |
++	      FIELD_PREP(PPE_TB_CFG_HASH_MODE, 1) |
++	      FIELD_PREP(PPE_TB_CFG_SCAN_MODE, PPE_SCAN_MODE_CHECK_AGE) |
++	      FIELD_PREP(PPE_TB_CFG_ENTRY_NUM, EN75_PPE_ENTRIES_SHIFT);
++	en75_ppe_wr(regs, PPE_TB_CFG, val);
++
++	en75_ppe_wr(regs, PPE_IP_PROT_CHK,
++		    PPE_IP_PROT_CHK_IPV4 | PPE_IP_PROT_CHK_IPV6);
++
++	en75_ppe_wr(regs, PPE_CAH_CTRL, PPE_CAH_CTRL_X_MODE);
++	en75_ppe_wr(regs, PPE_CAH_CTRL, 0);
++	en75_ppe_wr(regs, PPE_CAH_CTRL, PPE_CAH_CTRL_EN);
++
++	en75_ppe_wr(regs, PPE_FLOW_CFG,
++		    PPE_FLOW_CFG_IP6_3T_ROUTE | PPE_FLOW_CFG_IP6_5T_ROUTE |
++		    PPE_FLOW_CFG_IP6_6RD | PPE_FLOW_CFG_IP4_NAT |
++		    PPE_FLOW_CFG_IP4_NAPT | PPE_FLOW_CFG_IP4_DSLITE |
++		    PPE_FLOW_CFG_IP4_NAT_FRAG | PPE_FLOW_CFG_IP4_TCP_FRAG |
++		    PPE_FLOW_CFG_IP4_UDP_FRAG);
++
++	en75_ppe_wr(regs, PPE_UNB_AGE,
++		    FIELD_PREP(PPE_UNB_AGE_MIN_PACKETS, 1000) |
++		    FIELD_PREP(PPE_UNB_AGE_DELTA, 3));
++	en75_ppe_wr(regs, PPE_BND_AGE_0,
++		    FIELD_PREP(PPE_BND_AGE_0_DELTA_UDP, 12) |
++		    FIELD_PREP(PPE_BND_AGE_0_DELTA_NON_L4, 1));
++	en75_ppe_wr(regs, PPE_BND_AGE_1,
++		    FIELD_PREP(PPE_BND_AGE_1_DELTA_TCP_FIN, 1) |
++		    FIELD_PREP(PPE_BND_AGE_1_DELTA_TCP, 7));
++	en75_ppe_wr(regs, PPE_BIND_LMT_0,
++		    PPE_BIND_LMT_0_QUARTER | PPE_BIND_LMT_0_HALF);
++	en75_ppe_wr(regs, PPE_BIND_LMT_1,
++		    PPE_BIND_LMT_1_FULL | FIELD_PREP(PPE_BIND_LMT_1_NON_L4, 1));
++	en75_ppe_wr(regs, PPE_BNDR,
++		    FIELD_PREP(PPE_BNDR_BIND, 30) |
++		    FIELD_PREP(PPE_BNDR_PREBIND, 1));
++
++	en75_ppe_wr(regs, PPE_GLO_CFG,
++		    PPE_GLO_CFG_EN | PPE_GLO_CFG_IP4_L4_CS_DROP |
++		    PPE_GLO_CFG_IP4_CS_DROP | PPE_GLO_CFG_FLOW_DROP_UPDATE);
++
++	en75_ppe_wr(regs, PPE_DFP_CPORT, 0);
++
++	dev_info(dev, "PPE up: %d FOE entries at %pad\n",
++		 EN75_PPE_ENTRIES, &en75_foe_phys);
++	en75_ppe_running = true;
++	return 0;
++}
++
+ /*
+  * Diagnostic debugfs file: /sys/kernel/debug/ppe_regs.
+  *
+@@ -596,6 +790,11 @@
+ 		seq_printf(m, "%-16s (0x%03x) = 0x%08x\n",
+ 			   dump[i].name, dump[i].off,
+ 			   en75_ppe_rd(regs, dump[i].off));
++
++	seq_printf(m, "\nppe_offload      = %d\n", en75_ppe_running);
++	seq_printf(m, "foe entries used = %lu / %d\n",
++		   FIELD_GET(PPE_TB_USED_NUM, en75_ppe_rd(regs, PPE_TB_USED)),
++		   EN75_PPE_ENTRIES);
+ 	return 0;
+ }
+ DEFINE_SHOW_ATTRIBUTE(en75_ppe_regs);
+@@ -702,6 +901,16 @@
+ 		eth->qdma_irq[i] = irq;
+ 	}
+ 
++	/*
++	 * Must happen before the ports are created: en75_dev_init() reads
++	 * en75_ppe_enabled() to pick each GDM port's forward destination.
++	 */
++	if (ppe_offload) {
++		err = en75_ppe_start(&pdev->dev, regs);
++		if (err)
++			return err;
++	}
++
+ 	BUILD_BUG_ON(ARRAY_SIZE(eth->qdma) != ARRAY_SIZE(regs->qdma_regs));
+ 	BUILD_BUG_ON(ARRAY_SIZE(eth->qdma) != ARRAY_SIZE(eth->qdma_irq) * QDMA_NUM_IRQS);
+ 	for (i = 0; i < ARRAY_SIZE(eth->qdma); i++) {
+@@ -752,8 +961,8 @@
+ 	 * the PPE lives at +0xC00, well inside the 0x8000 window the DTS maps,
+ 	 * unlike the switch registers at +0x58000 (has_switch_regs is false
+ 	 * on the VMG8825-T50 for exactly that reason). */
+-	debugfs_create_file("ppe_regs", 0444, NULL, regs,
+-			    &en75_ppe_regs_fops);
++	en75_ppe_dir = debugfs_create_file("ppe_regs", 0444, NULL, regs,
++					   &en75_ppe_regs_fops);
+ 
+ 	return 0;
+ 
+--- a/econet_port.c
++++ b/econet_port.c
+@@ -133,9 +133,15 @@
+ 	struct en75_gdm_port *port = netdev_priv(dev);
+ 
+ 	en75_set_macaddr(port, dev->dev_addr);
+-	/* TODO: When the PPE is setup, we will want to route
+-	         evetything to that */
+-	en75_set_gdm_port_fwd_cfg(port, ETX_FPORT_QDMA0_CPU);
++	/*
++	 * With the PPE running, ingress goes to it rather than straight to
++	 * the CPU: flows it has bound are forwarded in hardware and never
++	 * reach Linux, and everything else falls through to the CPU via the
++	 * PPE's search-miss action. Without it the PPE would never see a
++	 * packet and could not learn a flow in the first place.
++	 */
++	en75_set_gdm_port_fwd_cfg(port, en75_ppe_enabled() ? ETX_FPORT_PPE
++							   : ETX_FPORT_QDMA0_CPU);
+ 
+ 	return 0;
+ }

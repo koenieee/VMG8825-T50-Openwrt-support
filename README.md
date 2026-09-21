@@ -18,27 +18,32 @@ console, and following `install-guide/README.md` step by step.
   no calibration in flash — a known issue on some MT7615E mPCIe cards
   without an onboard eeprom chip), a generic calibration blob is provided
   inline in the devicetree instead of pointing at flash.
-- Ethernet: LAN1-4 now run through the on-die MT7530-class switch as
-  real DSA ports (`mediatek,mt7530` in-tree driver, port CREV register
-  confirmed `0x7530`), not the old unmanaged econet-eth bridge.
-  **Confirmed on real hardware (2026-09-20):** clean boot with no panic,
-  `mt7530-mmio 1fb58000.ethernet-switch` probes, `lan1`-`lan4` DSA
-  netdevs present, and `lan3` (cable connected) negotiated 1Gbps/Full
-  with live non-zero RX/TX counters through `br-lan`. LAN1/2 share the
-  same switch and driver but weren't individually cabled this round —
-  see `NEXT_STEPS.md`. **The physical jack silkscreened "WAN" is switch
-  port 4 (`lan4`), confirmed by a live cable-swap test on 2026-09-20:**
-  a cable in the WAN jack immediately showed `lan4` with `carrier=1`,
-  `speed=1000`, `Link is Up - 1Gbps/Full`, and real RX/TX traffic;
-  `gmac1`/`eth1` showed no traffic at all despite a stale `carrier=1`
-  sysfs default, confirming it's unused/dead hardware on this board. The
-  DSA split shrinks `ethernet@1fb50000`'s `reg` to `0x8000`, which flips
-  the econet-eth driver's runtime `has_switch_regs` check to false,
-  making its switch-register pokes — including
-  `002-mt7530-embedded-phy-init.patch`'s WAN PHY calibration — dead code
-  for this board; that history was chasing bugs on the same physical
-  jack DSA now serves as `lan4`. See `NEXT_STEPS.md`'s Ethernet section
-  for the full writeup.
+- Ethernet: all five sockets run through the on-die MT7530-class switch
+  as real DSA ports (`mediatek,mt7530` in-tree driver, port CREV register
+  confirmed `0x7530`). The sockets are wired in physical order, switch
+  port 0 at the USB end through port 4 at the blue one, while the case
+  counts the LAN sockets the other way -- so the labels run backwards
+  against the port numbers:
+
+  | socket (silkscreen) | interface | switch port | PHY |
+  | --- | --- | --- | --- |
+  | LAN4 (nearest USB) | `lan4` | 0 | `mt7530-0:08` |
+  | LAN3 | `lan3` | 1 | `mt7530-0:09` |
+  | LAN2 | `lan2` | 2 | `mt7530-0:0a` |
+  | LAN1 | `lan1` | 3 | `mt7530-0:0b` |
+  | WAN (blue) | `wan` | 4 | `mt7530-0:0c` |
+
+  Each socket was identified with a cable in hand and then benchmarked.
+  Switch port 0 needed both a devicetree node and a driver fix: the
+  EN751627 entry borrowed EN7528's port-capability table, which starts at
+  port 1, so phylink rejected port 0 outright and that socket reached no
+  interface at all
+  (`783-net-dsa-mt7530-en751627-five-user-ports.patch`).
+
+  `gmac1`/`eth1` is a separate MAC with no PHY polled; it reports a stale
+  `carrier=1` and carries no traffic. It is not wired to any socket on
+  this board.
+- Hardware NAT offload (PPE) — see the performance section below.
 - USB storage — `kmod-usb-storage`/`block-mount`/ext4+vfat+nls kmods now
   ship in the default image (previously only worked via a manual
   `apk add` during testing).
@@ -56,6 +61,44 @@ console, and following `install-guide/README.md` step by step.
 - A fully unattended coldboot, once the bootloader has both patches from
   `BOOTLOADER-PATCH.md` applied: no `ATSE`/`ATEN` unlock needed, boot
   flag stays at 0, boots straight from main.
+
+## Performance
+
+Routed throughput, measured port by port on real hardware with iperf3
+(router-on-a-stick, VLAN in / VLAN out, three runs per figure):
+
+| | forwarded | router CPU |
+| --- | --- | --- |
+| hardware flow offload (PPE) | **937 Mbit/s** | 99.9% idle |
+| software flow offload | ~300 Mbit/s | ~61% idle |
+| no offload | ~310 Mbit/s | ~61% idle |
+
+937 Mbit/s is the wire, both directions, on every one of the five
+sockets. The prebuilt images turn this on by default -- the driver brings
+the PPE up on load and `flow_offloading`/`flow_offloading_hw` are set in
+the shipped firewall config -- so there is nothing to enable after
+flashing.
+
+The offload lives in `008-ppe-flow-offload-fixes.patch`. Three things in
+it are worth knowing if you are porting this elsewhere:
+
+- The FOE entry stride on EN751627 is **64 bytes**, not the 80 upstream
+  `mtk_eth_soc` uses, and the table is little-endian while the CPU is
+  big-endian. Entries are whole-word byte-swapped, so every `u16` pair
+  has to be declared back-to-front relative to upstream.
+- `act_dp`, the egress port, is a single **byte at offset 40** for the
+  IPv4 class -- the old Ralink layout, where upstream has `udf_tsid`.
+- `nf_flow_table_offload` builds its two MAC mangles arithmetically, so
+  upstream's fixed `src += 2` reads the empty half on a big-endian host
+  and every offloaded flow goes out addressed to `xx:xx:xx:xx:00:00`.
+  **`mtk_eth_soc` has the identical defect**; it has simply never been
+  hit, because MediaTek's targets are little-endian.
+
+The RX descriptor's `ppe_entry` field does not address the slot the
+engine wrote, so flows are bound by reproducing the vendor's own hash
+(`FoeHashFun`, HASH_MODE 1) and writing the entry straight to the slot
+the engine will look in. That reproduction is verified live: 42 flows
+checked, 42 agreeing with the hardware.
 
 ## Known limitations
 

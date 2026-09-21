@@ -371,8 +371,20 @@
 	status = "okay";
 };
 
+&gsw_port0 {
+	/*
+	 * The sockets are wired in physical order, port 0 at the USB end
+	 * through port 4 at the blue socket, while the case counts the LAN
+	 * sockets the other way -- away from the blue one. So the labels run
+	 * backwards against the port numbers. Measured a socket at a time,
+	 * cable in hand; all five forward 937 Mbit/s through the PPE.
+	 */
+	label = "lan4";
+	status = "okay";
+};
+
 &gsw_port1 {
-	label = "lan1";
+	label = "lan3";
 	status = "okay";
 };
 
@@ -382,11 +394,12 @@
 };
 
 &gsw_port3 {
-	label = "lan3";
+	label = "lan1";
 	status = "okay";
 };
 
 &gsw_port4 {
-	label = "lan4";
+	/* The blue socket, printed WAN. */
+	label = "wan";
 	status = "okay";
 };

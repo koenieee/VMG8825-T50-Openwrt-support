@@ -1,0 +1,777 @@
+Make the PPE actually bind flows, and tell it what it is looking at.
+
+Everything below was found by measuring against the engine on hardware;
+the reasoning for each piece is in the comment beside it.
+
+ - The FOE entry stride is 64 bytes here, not the 80 upstream uses, and
+   the table is little-endian while this CPU is not, so entries are
+   byte-swapped on the way in and out. A whole-word reversal exchanges
+   the halves of every 32-bit word, so each u16 pair has to be declared
+   back-to-front relative to upstream.
+ - act_dp, the egress port, is a single byte at offset 40 for the IPv4
+   class -- the old Ralink layout, where upstream has udf_tsid.
+ - nf_flow_table_offload hands the two halves of a MAC address as
+   arithmetic, not bytes, so reaching for them with a fixed "+ 2" picks
+   the empty half on a big-endian host. Every offloaded flow went out
+   addressed to xx:xx:xx:xx:00:00.
+ - The DSA tag is reproduced by the PPE's VLAN layer rather than by the
+   tagger, and the GDM needs the VLAN ethertype and its special tag
+   enabled before it will hand a tagged frame to the engine at all.
+ - The RX descriptor's ppe_entry does not address the slot the engine
+   wrote. en75_ppe_hash_entry() reproduces the engine's own index
+   instead, so a flow is bound where it will be found, the moment the
+   flowtable offers it.
+
+Forwarding goes from 275 Mbit/s at 64% CPU idle to 937 Mbit/s at 99.8%.
+
+--- a/econet_ppe.h
++++ b/econet_ppe.h
+@@ -81,8 +81,28 @@
+  */
+ #define EN75_PPE_ENTRIES_SHIFT	4
+ #define EN75_PPE_ENTRIES	(1024 << EN75_PPE_ENTRIES_SHIFT)
++
++/*
++ * What the RX descriptor's ppe_entry field reads when the engine did not
++ * assign one. Note it is also EN75_PPE_ENTRIES - 1, so a plain bounds
++ * check will not catch it.
++ */
++#define EN75_PPE_NO_ENTRY	0x3fff
+ #define EN75_PPE_HASH_MASK	(EN75_PPE_ENTRIES - 1)
+-#define EN75_PPE_ENTRY_SIZE	80
++/*
++ * Measured, not taken from the register map. Every record the engine writes
++ * starts on a 64-byte boundary: scanning the table in 16-byte units found 44
++ * runs and all 44 begin at a multiple of 64, while only 14 fall on a multiple
++ * of 80. PPE_TB_CFG reads back with BIT(3) set, which the MediaTek map calls
++ * ENTRY_80B, so that bit does not mean that here -- believe the table.
++ *
++ * This is the hardware's stride only. struct en75_foe_entry stays 80 bytes
++ * because the IPv6 5-tuple needs that much, and it is used as software
++ * scratch; only the first EN75_PPE_ENTRY_SIZE bytes of it ever reach the
++ * table. That is also why IPv6 cannot be offloaded here -- its fields run
++ * past the end of a 64-byte entry.
++ */
++#define EN75_PPE_ENTRY_SIZE	64
+ /*
+  * The hardware picks between two adjacent entries per hash bucket
+  * (TB_CFG.HASH_MODE == 1), so software tracks pending flows per bucket,
+@@ -137,28 +157,52 @@
+  */
+ #define EN75_PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED	0x0f
+ 
++/*
++ * Every 16-bit pair here is named back to front compared with upstream, for
++ * the same reason src_port comes before dest_port above: entries are
++ * byte-swapped on the way into the table, which exchanges the two halves of
++ * every 32-bit word, so a pair written in upstream's order lands in the
++ * other one's slot.
++ *
++ * The vendor's PpeFillInL2Info settles which slot is which. Its IPv4 branch
++ * stores the destination MAC as a word at 48 plus a half-word at 52, and
++ * then writes an unrelated half-word at 54 -- so in the table the MAC's low
++ * half sits at 52 and the second VLAN at 54, the opposite way round from
++ * upstream. The source MAC and the PPPoE session id pair up the same way at
++ * 56/60/62.
++ */
+ struct en75_foe_mac_info {
+-	u16 vlan1;
+ 	u16 etype;
++	u16 vlan1;
+ 
+ 	u32 dest_mac_hi;
+ 
+-	u16 vlan2;
+ 	u16 dest_mac_lo;
++	u16 vlan2;
+ 
+ 	u32 src_mac_hi;
+ 
+-	u16 pppoe_id;
+ 	u16 src_mac_lo;
++	u16 pppoe_id;
+ };
+ 
+ struct en75_ipv4_tuple {
+ 	u32 src_ip;
+ 	u32 dest_ip;
+ 	union {
++		/*
++		 * The engine keeps the source port in the high half of this
++		 * word and the destination in the low half: an SSDP entry,
++		 * which can only be going to port 1900, reads back as
++		 * <ephemeral>076c. Entries are byte-swapped on the way in and
++		 * out, so on this big-endian CPU the source has to be named
++		 * first for it to land in the high half. Upstream names the
++		 * destination first, which is right on a little-endian host
++		 * and exactly inverted here.
++		 */
+ 		struct {
+-			u16 dest_port;
+ 			u16 src_port;
++			u16 dest_port;
+ 		};
+ 		struct {
+ 			u8 protocol;
+
+--- a/econet_ppe.c
++++ b/econet_ppe.c
+@@ -101,9 +101,34 @@
+ 	return ioread32(ppe->fe_base + 0x0010) & EN75_FOE_IB1_BIND_TIMESTAMP;
+ }
+ 
++/*
++ * The engine stores FOE entries little-endian and this CPU is big-endian, so
++ * every word has to be turned over on the way in and out. A source address of
++ * 192.168.220.2 reads back as 02dca8c0, not c0a8dc02.
++ */
++static void en75_foe_swap(void *dst, const void *src, int len)
++{
++	const u32 *s = src;
++	u32 *d = dst;
++	int i;
++
++	for (i = 0; i < len / 4; i++)
++		d[i] = swab32(s[i]);
++}
++
++static u32 en75_foe_ib1(const struct en75_foe_entry *hwe)
++{
++	return swab32(READ_ONCE(hwe->ib1));
++}
++
+ static struct en75_foe_entry *en75_foe_get_entry(struct en75_ppe *ppe, u16 hash)
+ {
+-	return &ppe->foe_table[hash];
++	/*
++	 * Not &foe_table[hash]: the hardware's stride is EN75_PPE_ENTRY_SIZE,
++	 * which is smaller than the scratch struct.
++	 */
++	return (struct en75_foe_entry *)((u8 *)ppe->foe_table +
++					 hash * EN75_PPE_ENTRY_SIZE);
+ }
+ 
+ /*
+@@ -152,8 +177,30 @@
+ 	hash = (hv1 & hv2) | ((~hv1) & hv3);
+ 	hash = (hash >> 24) | ((hash & 0xffffff) << 8);
+ 	hash ^= hv1 ^ hv2 ^ hv3;
+-	hash ^= hash >> 16;
+-	hash <<= (ffs(EN75_PPE_HASH_OFFSET) - 1);
++
++	/*
++	 * Up to here this is the vendor's FoeHashFun for TB_CFG.HASH_MODE 1,
++	 * instruction for instruction. The fold that turns the 32-bit result
++	 * into a bucket is where the two parted company.
++	 *
++	 * The vendor picks between two folds on a bit the MediaTek map calls
++	 * the top of SCAN_MODE. With it set the hash is folded in halves,
++	 * which is what upstream does and what this function used to do. With
++	 * it clear -- which is how en75_ppe_start() programs the register --
++	 * the hardware folds in thirteens instead, and the two agree on
++	 * almost nothing. That is why an entry committed at the index the
++	 * hardware handed us was never found again.
++	 */
++	hash = (hash & 0x1fff) ^ (hash >> 26) ^ ((hash >> 13) & 0x1fff);
++
++	/*
++	 * The vendor doubles that thirteen-bit fold before using it, and so
++	 * did this function. Measuring against the engine says not to: over
++	 * forty flows, every index computed here came out at exactly twice
++	 * the slot the hardware had actually filed the record in, and some of
++	 * those slots were odd. The doubling belongs to the vendor's own
++	 * addressing of an eighty-byte entry, not to the index itself.
++	 */
+ 	hash &= EN75_PPE_ENTRIES - 1;
+ 
+ 	return hash;
+@@ -234,6 +281,23 @@
+ 
+ 	*ib2 &= ~EN75_FOE_IB2_DEST_PORT;
+ 	*ib2 |= FIELD_PREP(EN75_FOE_IB2_DEST_PORT, port);
++
++	/*
++	 * And again where this engine actually looks for it. The vendor's
++	 * hw_nat sets the egress port with a single byte store at offset 40
++	 * of the entry -- set_act_dp_bits() does "sb a1,40(a0)" once it has
++	 * checked ib1[27:26] for the IPv4 class -- which is the old Ralink
++	 * act_dp field. Upstream mtk_ppe has udf_tsid at that offset and
++	 * carries the port in ib2 instead, so a driver derived from upstream
++	 * leaves act_dp at zero and the engine forwards the flow nowhere.
++	 *
++	 * act_dp is the top byte of that word natively, and entries are
++	 * byte-swapped on the way into the table, so it goes in the bottom
++	 * byte here.
++	 */
++	if (FIELD_GET(EN75_FOE_IB1_PACKET_TYPE, entry->ib1) <
++	    EN75_PPE_PKT_TYPE_IPV6_ROUTE_3T)
++		entry->ipv4.udf_tsid = port;
+ }
+ 
+ static int en75_foe_entry_set_ipv4_tuple(struct en75_foe_entry *entry,
+@@ -278,6 +342,14 @@
+ 	int type = FIELD_GET(EN75_FOE_IB1_PACKET_TYPE, entry->ib1);
+ 	int i;
+ 
++	/*
++	 * An IPv6 entry does not fit in this engine's 64-byte slot: its
++	 * addresses alone are 32 bytes and ib2 and the MAC info sit past the
++	 * end. Say so rather than writing over the next entry.
++	 */
++	if (EN75_PPE_ENTRY_SIZE < sizeof(struct en75_foe_entry))
++		return -EOPNOTSUPP;
++
+ 	if (type != EN75_PPE_PKT_TYPE_IPV6_ROUTE_5T &&
+ 	    type != EN75_PPE_PKT_TYPE_IPV6_ROUTE_3T) {
+ 		WARN_ON_ONCE(1);
+@@ -386,13 +458,16 @@
+ 				   struct en75_flow_entry *entry)
+ {
+ 	struct en75_foe_entry *hwe;
++	u32 ib1;
+ 
+ 	if (entry->hash == 0xffff)
+ 		return;
+ 
+ 	hwe = en75_foe_get_entry(ppe, entry->hash);
+-	hwe->ib1 &= ~EN75_FOE_IB1_STATE;
+-	hwe->ib1 |= FIELD_PREP(EN75_FOE_IB1_STATE, EN75_FOE_STATE_INVALID);
++	ib1 = en75_foe_ib1(hwe);
++	ib1 &= ~EN75_FOE_IB1_STATE;
++	ib1 |= FIELD_PREP(EN75_FOE_IB1_STATE, EN75_FOE_STATE_INVALID);
++	hwe->ib1 = swab32(ib1);
+ 	dma_wmb();
+ 	en75_ppe_cache_clear(ppe);
+ 
+@@ -411,9 +486,10 @@
+ 
+ 	/* ib1 carries the state, so it goes last and only once the rest of
+ 	 * the entry is visible to the engine. */
+-	memcpy(&hwe->data, &entry->data, sizeof(hwe->data));
++	en75_foe_swap(&hwe->data, &entry->data,
++		      EN75_PPE_ENTRY_SIZE - sizeof(hwe->ib1));
+ 	wmb();
+-	hwe->ib1 = entry->ib1;
++	hwe->ib1 = swab32(entry->ib1);
+ 	dma_wmb();
+ 
+ 	en75_ppe_cache_clear(ppe);
+@@ -429,18 +505,24 @@
+ }
+ 
+ /*
+- * Park the entry in its bucket. Nothing is written to hardware yet --
+- * that happens in en75_ppe_check_skb() once the engine asks for it.
++ * Write the entry to the slot the engine will look in.
++ *
++ * en75_ppe_hash_entry() reproduces the engine's own index, so the slot is
++ * known here and there is nothing to wait for: the flow is bound the moment
++ * the flowtable offers it. It used to be parked instead and bound later from
++ * en75_ppe_check_skb(), back when the only way to find the slot was to watch
++ * for the engine to hand it to us -- which it never did correctly.
+  */
+ static int en75_foe_entry_commit(struct en75_ppe *ppe,
+ 				 struct en75_flow_entry *entry)
+ {
+ 	u32 hash = en75_ppe_hash_entry(&entry->data);
+ 
+-	entry->hash = 0xffff;
+ 	spin_lock_bh(&en75_ppe_lock);
++	entry->hash = hash;
+ 	hlist_add_head(&entry->list,
+ 		       &ppe->foe_flow[hash / EN75_PPE_HASH_OFFSET]);
++	__en75_foe_entry_commit(ppe, &entry->data, hash);
+ 	spin_unlock_bh(&en75_ppe_lock);
+ 
+ 	return 0;
+@@ -449,29 +531,40 @@
+ void en75_ppe_check_skb(struct en75_ppe *ppe, struct sk_buff *skb,
+ 			u16 hash, u8 crsn)
+ {
+-	struct hlist_head *head;
+-	struct en75_foe_entry *hwe;
+-	struct en75_flow_entry *entry;
+ 	struct en75_foe_entry foe = {};
++	struct en75_flow_entry *entry;
++	struct hlist_head *head;
+ 	struct hlist_node *n;
+ 	int entry_len;
+ 
++	/*
++	 * Flows are bound as soon as the flowtable offers them, so there is
++	 * nothing to do here for a flow that is running. This is the other
++	 * case: the engine ages entries out on its own, and once it has, the
++	 * packets come back to the CPU carrying the slot the flow used to
++	 * live in. Put it back.
++	 */
+ 	if (!ppe || crsn != EN75_PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED)
+ 		return;
+ 
++	/*
++	 * 0x3fff is the "no entry" sentinel, not an index. It is also
++	 * EN75_PPE_ENTRIES - 1, so the bounds check below lets it through
++	 * and we would go poking at the last slot in the table.
++	 */
++	if (hash == EN75_PPE_NO_ENTRY)
++		return;
++
+ 	if (WARN_ON_ONCE(hash >= EN75_PPE_ENTRIES))
+ 		return;
+ 
+ 	head = &ppe->foe_flow[hash / EN75_PPE_HASH_OFFSET];
+-	hwe = en75_foe_get_entry(ppe, hash);
+ 
+ 	spin_lock_bh(&en75_ppe_lock);
+ 
+-	if (FIELD_GET(EN75_FOE_IB1_STATE, hwe->ib1) == EN75_FOE_STATE_BIND)
+-		goto out;
+-
+-	entry_len = en75_flow_entry_match_len(hwe);
+-	memcpy(&foe, hwe, entry_len);
++	en75_foe_swap(&foe, en75_foe_get_entry(ppe, hash),
++		      EN75_PPE_ENTRY_SIZE);
++	entry_len = en75_flow_entry_match_len(&foe);
+ 
+ 	hlist_for_each_entry_safe(entry, n, head, list) {
+ 		if (!en75_flow_entry_match(entry, &foe, entry_len))
+@@ -482,7 +575,6 @@
+ 		break;
+ 	}
+ 
+-out:
+ 	spin_unlock_bh(&en75_ppe_lock);
+ }
+ 
+@@ -523,17 +615,43 @@
+ 					 void *eth)
+ {
+ 	void *dest = eth + act->mangle.offset;
+-	const void *src = &act->mangle.val;
++	u16 half;
+ 
+ 	if (act->mangle.offset > 8)
+ 		return;
+ 
+-	if (act->mangle.mask == 0xffff) {
+-		src += 2;
+-		dest += 2;
++	/*
++	 * A MAC address arrives as three mangles: one 32-bit and two 16-bit,
++	 * the 16-bit pair sharing the word at offset 4 and telling the two
++	 * apart by their mask. The 32-bit one carries the four address bytes
++	 * in mangle.val as bytes, so it can be copied straight out.
++	 *
++	 * The 16-bit ones cannot. nf_flow_table_offload builds them
++	 * arithmetically -- "val = val16 << 16" for the source, "val = val16"
++	 * for the destination -- so the pair of address bytes sits in a half
++	 * of a host word, and which two bytes of that word they are depends
++	 * on the host's endianness. Upstream reaches for them with a fixed
++	 * "src += 2", which is the right half on a little-endian host and the
++	 * empty one here: both halves arrived as zero, and every offloaded
++	 * flow went out addressed to xx:xx:xx:xx:00:00.
++	 *
++	 * Take the half as a number instead, which is the same on either
++	 * host, and store it back as a u16 -- val16 was itself memcpy'd from
++	 * the address, so its bytes are already in the order the wire wants.
++	 */
++	switch (act->mangle.mask) {
++	case 0x0000ffff:	/* source MAC, first two bytes */
++		half = act->mangle.val >> 16;
++		memcpy(dest + 2, &half, sizeof(half));
++		break;
++	case 0xffff0000:	/* destination MAC, last two bytes */
++		half = act->mangle.val;
++		memcpy(dest, &half, sizeof(half));
++		break;
++	default:
++		memcpy(dest, &act->mangle.val, 4);
++		break;
+ 	}
+-
+-	memcpy(dest, src, act->mangle.mask ? 2 : 4);
+ }
+ 
+ static int en75_flow_mangle_ports(const struct flow_action_entry *act,
+@@ -958,8 +1076,8 @@
+ 
+ int en75_ppe_flows_show(struct seq_file *m, void *v)
+ {
++	int i, bound = 0, pending = 0, used = 0;
+ 	struct en75_ppe *ppe = m->private;
+-	int i, bound = 0, pending = 0;
+ 
+ 	if (!ppe) {
+ 		seq_puts(m, "PPE flow offload not initialised\n");
+@@ -967,22 +1085,38 @@
+ 	}
+ 
+ 	spin_lock_bh(&en75_ppe_lock);
++
+ 	for (i = 0; i < ARRAY_SIZE(ppe->foe_flow); i++) {
+ 		struct en75_flow_entry *entry;
+ 
+ 		hlist_for_each_entry(entry, &ppe->foe_flow[i], list) {
+-			if (entry->hash == 0xffff)
++			if (entry->hash == 0xffff) {
+ 				pending++;
+-			else
+-				bound++;
++				continue;
++			}
++
++			bound++;
++			if (bound <= 16) {
++				struct en75_ipv4_tuple *t =
++					&entry->data.ipv4.orig;
++
++				seq_printf(m, "flow          = slot %u  %pI4:%u -> %pI4:%u\n",
++					   entry->hash, &t->src_ip,
++					   t->src_port, &t->dest_ip,
++					   t->dest_port);
++			}
+ 		}
+ 	}
++
++	for (i = 0; i < EN75_PPE_ENTRIES; i++)
++		if (en75_foe_ib1(en75_foe_get_entry(ppe, i)))
++			used++;
++
+ 	spin_unlock_bh(&en75_ppe_lock);
+ 
+ 	seq_printf(m, "flows pending = %d\n", pending);
+ 	seq_printf(m, "flows bound   = %d\n", bound);
+-	seq_printf(m, "foe entries   = %u / %u\n",
+-		   ppe_r32(ppe, PPE_TB_USED), EN75_PPE_ENTRIES);
++	seq_printf(m, "foe entries   = %u / %u\n", used, EN75_PPE_ENTRIES);
+ 
+ 	return 0;
+ }
+@@ -994,7 +1128,7 @@
+ 	struct en75_ppe *ppe;
+ 	int err;
+ 
+-	BUILD_BUG_ON(sizeof(struct en75_foe_entry) != EN75_PPE_ENTRY_SIZE);
++	BUILD_BUG_ON(sizeof(struct en75_foe_entry) < EN75_PPE_ENTRY_SIZE);
+ 
+ 	/* Dominated by ~32 KiB of hlist heads, one per hash bucket. */
+ 	ppe = devm_kzalloc(dev, sizeof(*ppe), GFP_KERNEL);
+
+--- a/econet_eth.h
++++ b/econet_eth.h
+@@ -187,6 +187,9 @@
+ int en75_port_fport(const struct net_device *dev);
+ 
+ /* Called in softirq context */
++struct dst_entry *en75_dsa_meta_dst(struct net_device *dev, u8 port_id);
++void en75_port_free_metadata(struct net_device *dev);
++
+ int en75_rx_before_recv(struct en75_eth *eth, struct sk_buff *skb,
+ 			enum etx_fport sport);
+ 
+
+--- a/econet_eth.c
++++ b/econet_eth.c
+@@ -34,6 +34,7 @@
+ #include <linux/skbuff.h>
+ #include <linux/etherdevice.h>
+ #include <net/dsa.h>
++#include <net/dst_metadata.h>
+ #include <linux/platform_device.h>
+ #include <linux/reset.h>
+ #include <linux/of_net.h>
+@@ -89,6 +90,11 @@
+ 		MT7530_CPU_EN | MT7530_CPU_PORT(6) \
+ 	)
+ 
++/* The switch's special tag: four bytes between the source MAC and the
++ * ethertype, same length as upstream's MTK_HDR_LEN.
++ */
++#define EN75_STAG_LEN			4
++
+ #define SWITCH_MAC_HI			0x30e8
+ #define SWITCH_MAC_LO			0x30e4
+ 
+@@ -370,13 +376,19 @@
+ static struct net_device *en75_get_sport_dev(struct en75_eth_pvt *eth,
+ 					     enum etx_fport sport)
+ {
+-	if (sport == ETX_FPORT_GDM2) {
++	if (sport == ETX_FPORT_GDM2)
+ 		return eth->ports[1];
+-	} else {
+-		if (sport != ETX_FPORT_GDM1)
+-			dev_info(eth->pub.dev, "rx: on unexpected fport %d\n", sport);
+-		return eth->ports[0];
+-	}
++
++	/*
++	 * A frame that came in through the switch reports its ingress port
++	 * rather than GDM1, so that is not the surprise it used to be. It
++	 * still arrives on the conduit either way.
++	 */
++	if (sport != ETX_FPORT_GDM1 && !(sport & ERX_SPORT_FROM_SWITCH))
++		dev_info_once(eth->pub.dev, "rx: on unexpected fport %d\n",
++			      sport);
++
++	return eth->ports[0];
+ }
+ 
+ int en75_rx_before_recv(struct en75_eth *eth, struct sk_buff *skb,
+@@ -387,31 +399,33 @@
+ 
+ 	port = en75_get_sport_dev(ep, sport);
+ 
++	/*
++	 * stag_en does not take the switch's special tag out of the frame,
++	 * it just also reports the ingress port in the descriptor. Verified
++	 * on the wire: DA, SA, then "01 04 00 00", then the real ethertype,
++	 * with 04 being gsw_port4 -- the same port sport carries.
++	 *
++	 * Normally tag_mtk would strip those four bytes, but we hand the DSA
++	 * core a port-mux dst instead and dsa_switch_rcv() then skips the
++	 * tagger entirely (net/dsa/tag.c). So nothing downstream is going to
++	 * remove them and we have to do it here, or the ethertype the stack
++	 * reads is the middle of the tag.
++	 */
++	if (netdev_uses_dsa(port) && (sport & ERX_SPORT_FROM_SWITCH) &&
++	    likely(pskb_may_pull(skb, ETH_HLEN + EN75_STAG_LEN))) {
++		struct dst_entry *dst;
++
++		memmove(skb->data + EN75_STAG_LEN, skb->data, 2 * ETH_ALEN);
++		skb_pull(skb, EN75_STAG_LEN);
++
++		dst = en75_dsa_meta_dst(port, sport & ERX_SPORT_PORT_MASK);
++		if (dst)
++			skb_dst_set_noref(skb, dst);
++	}
++
+ 	skb->dev = port;
+ 	skb->protocol = eth_type_trans(skb, port);
+ 
+-	if (netdev_uses_dsa(port)) {
+-		/* PPE module requires untagged packets to work
+-		 * properly and it provides DSA port index via the
+-		 * DMA descriptor. Report DSA tag to the DSA stack
+-		 * via skb dst info.
+-		 */
+-
+-		// On EN751221 generally, this is not done, but the
+-		// EN7526C is special cased and it does do this for
+-		// that one. If we need it, we'll want to do one
+-		// codepath for everything. For now we'll do nothing
+-		// and hope that the tag-basd DSA works.
+-		//port_num = (sp_tag & 0x7); /*switch port id*/
+-		#if 0
+-		u32 sptag = get_erx_sp_tag(&desc.t.erx);
+-		if (sptag < ARRAY_SIZE(port->dsa_meta) &&
+-			port->dsa_meta[sptag])
+-			skb_dst_set_noref(q->skb,
+-						&port->dsa_meta[sptag]->dst);
+-		#endif
+-	}
+-
+ 	return 0;
+ }
+ 
+@@ -533,6 +547,7 @@
+ 			continue;
+ 
+ 		unregister_netdev(eth->ports[i]);
++		en75_port_free_metadata(eth->ports[i]);
+ 	}
+ 
+ 	platform_set_drvdata(pdev, NULL);
+@@ -617,10 +632,10 @@
+ #define PPE_BND_AGE_1_DELTA_TCP		GENMASK(14, 0)
+ #define PPE_BND_AGE_1_DELTA_TCP_FIN	GENMASK(30, 16)
+ 
+-static bool ppe_offload;
++static bool ppe_offload = true;
+ module_param(ppe_offload, bool, 0444);
+ MODULE_PARM_DESC(ppe_offload,
+-		 "Bring up the PPE hardware flow-offload engine and route GDM ingress through it (default off)");
++		 "Bring up the PPE hardware flow-offload engine and route GDM ingress through it (default on)");
+ 
+ /*
+  * Single FOE table for the SoC's single PPE instance. Kept file-static
+@@ -672,7 +687,12 @@
+ 	      PPE_TB_CFG_AGE_TCP |
+ 	      PPE_TB_CFG_AGE_UDP |
+ 	      PPE_TB_CFG_AGE_TCP_FIN |
+-	      PPE_TB_CFG_ENTRY_80B |
++	      /*
++	       * ENTRY_80B deliberately not set. Every record the engine
++	       * writes starts on a 64-byte boundary, so the table it keeps
++	       * is on a 64-byte stride whatever this bit is called; leaving
++	       * it set only made the register disagree with the table.
++	       */
+ 	      FIELD_PREP(PPE_TB_CFG_SEARCH_MISS, PPE_SEARCH_MISS_FORWARD_BUILD) |
+ 	      FIELD_PREP(PPE_TB_CFG_KEEPALIVE, PPE_KEEPALIVE_DISABLE) |
+ 	      FIELD_PREP(PPE_TB_CFG_HASH_MODE, 1) |
+@@ -683,6 +703,15 @@
+ 	en75_ppe_wr(regs, PPE_IP_PROT_CHK,
+ 		    PPE_IP_PROT_CHK_IPV4 | PPE_IP_PROT_CHK_IPV6);
+ 
++	/*
++	 * Both TPID slots, or the parser stops at the VLAN tag and reports
++	 * every tagged frame as NO_FLOW. Nothing set this before; it reads
++	 * back 0, and on a router-on-a-stick that means no flow can ever be
++	 * learned. 0x8100 is the only TPID we generate, so use it for both
++	 * rather than guessing at 0x88a8 for the outer one.
++	 */
++	en75_ppe_wr(regs, PPE_VLAN_TPID, 0x81008100);
++
+ 	en75_ppe_wr(regs, PPE_CAH_CTRL, PPE_CAH_CTRL_X_MODE);
+ 	en75_ppe_wr(regs, PPE_CAH_CTRL, 0);
+ 	en75_ppe_wr(regs, PPE_CAH_CTRL, PPE_CAH_CTRL_EN);
+
+--- a/econet_port.c
++++ b/econet_port.c
+@@ -11,6 +11,7 @@
+ #include <linux/ip.h>
+ #include <linux/ipv6.h>
+ #include <net/dsa.h>
++#include <net/dst_metadata.h>
+ #include <linux/platform_device.h>
+ #include <linux/reset.h>
+ #include <linux/of_net.h>
+@@ -52,6 +53,9 @@
+ 	u64 rx_len[7];
+ };
+ 
++/* MT7530 has seven ports and @sport carries three bits, so eight. */
++#define EN75_MAX_DSA_PORTS 8
++
+  struct en75_gdm_port {
+ 	struct net_device *dev;
+ 
+@@ -68,7 +72,7 @@
+ 	u64 cpu_tx_packets;
+ 	u64 fwd_tx_packets;
+ 
+-	// struct metadata_dst *dsa_meta[AIROHA_MAX_DSA_PORTS];
++	struct metadata_dst *dsa_meta[EN75_MAX_DSA_PORTS];
+ 
+ 	struct en75_qdma *qdma;
+ 
+@@ -114,6 +118,57 @@
+ 	return 0;
+ }
+ 
++static int en75_metadata_dst_alloc(struct en75_gdm_port *port)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(port->dsa_meta); i++) {
++		struct metadata_dst *md_dst;
++
++		md_dst = metadata_dst_alloc(0, METADATA_HW_PORT_MUX,
++					    GFP_KERNEL);
++		if (!md_dst)
++			return -ENOMEM;
++
++		md_dst->u.port_info.port_id = i;
++		port->dsa_meta[i] = md_dst;
++	}
++
++	return 0;
++}
++
++static void en75_metadata_dst_free(struct en75_gdm_port *port)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(port->dsa_meta); i++) {
++		if (!port->dsa_meta[i])
++			continue;
++
++		dst_release(&port->dsa_meta[i]->dst);
++		port->dsa_meta[i] = NULL;
++	}
++}
++
++/*
++ * The dst that tells the DSA core which user port a frame arrived on.
++ * Lives here because struct en75_gdm_port is private to this file.
++ */
++struct dst_entry *en75_dsa_meta_dst(struct net_device *dev, u8 port_id)
++{
++	struct en75_gdm_port *port = netdev_priv(dev);
++
++	if (port_id >= ARRAY_SIZE(port->dsa_meta) || !port->dsa_meta[port_id])
++		return NULL;
++
++	return &port->dsa_meta[port_id]->dst;
++}
++
++void en75_port_free_metadata(struct net_device *dev)
++{
++	en75_metadata_dst_free(netdev_priv(dev));
++}
++
+ static void en75_set_gdm_port_fwd_cfg(struct en75_gdm_port *port,
+ 				      enum etx_fport val)
+ {
+@@ -127,6 +182,17 @@
+ 	set_gdm_fwd_cfg_default_fport(&fc, val);
+ 	set_gdm_fwd_cfg_drop_oversize(&fc, true);
+ 	en75_wreg(fc, &port->regs->fwd_cfg);
++
++	/*
++	 * LAN GDM only -- the WAN GDM is not behind the switch, so a special
++	 * tag there would mean nothing. Not netdev_uses_dsa(): that is still
++	 * false at port init, and gating on it cost a whole build cycle.
++	 *
++	 * 0x110 is stag_en. The offset is hardcoded because the header puts
++	 * the register elsewhere and the OEM driver's own writes say 0x110.
++	 */
++	if (port->fport == ETX_FPORT_GDM1)
++		writel(1, (u32 __iomem *)port->regs + 0x110 / 4);
+ }
+ 
+ static int en75_dev_init(struct net_device *dev)
+@@ -590,10 +656,11 @@
+ 	port->qdma = qdma;
+ 	port->eth = eth;
+ 
+-	// TODO: This is pretty easy to enable
+-// 	err = airoha_metadata_dst_alloc(port);
+-// 	if (err)
+-// 		return err;
++	err = en75_metadata_dst_alloc(port);
++	if (err) {
++		en75_metadata_dst_free(port);
++		return ERR_PTR(err);
++	}
+ 
+ 	err = register_netdev(ndev);
+ 	if (err)
+@@ -608,6 +675,6 @@
+ 	return ndev;
+ 
+ free_metadata_dst:
+-// 	airoha_metadata_dst_free(port);
++	en75_metadata_dst_free(port);
+ 	return ERR_PTR(err);
+ }
+
+--- a/qdma_desc.h
++++ b/qdma_desc.h
+@@ -268,6 +268,16 @@
+ #define ERX_L2VLD					BIT(24)
+ #define ERX_L4F						BIT(23)
+ #define ERX_SPORT_MASK					GENMASK(22, 19)
++
++/*
++ * With GDM stag_en on, @sport stops being the GDM fport and starts
++ * reporting where the switch received the frame: bit 3 marks "came in
++ * through the switch" and the low three bits are the MT7530 port. That
++ * is the same three-bit source port the MTK special tag carries in the
++ * frame, which is exactly what the tag is for.
++ */
++#define ERX_SPORT_FROM_SWITCH				BIT(3)
++#define ERX_SPORT_PORT_MASK				GENMASK(2, 0)
+ #define ERX_CRSN_MASK					GENMASK(18, 14)
+ #define ERX_PPE_ENTRY_MASK				GENMASK(13, 0)
+ 
+

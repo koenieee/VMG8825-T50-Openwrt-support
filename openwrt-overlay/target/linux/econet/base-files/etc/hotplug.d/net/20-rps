@@ -1,0 +1,18 @@
+# Re-apply the econet-eth RPS mask whenever the DSA conduit appears.
+#
+# econet-eth probes at roughly 14s, well after rcS has already run
+# /etc/rc.d/S21rps, so at boot the init script finds no
+# /sys/class/net/eth0/queues/rx-* yet and silently does nothing. This
+# hotplug hook is what actually lands the mask on a cold boot; it also
+# restores it if eth0 is ever removed and re-added.
+#
+# See /etc/init.d/rps for why the mask is 0xe.
+
+[ "$ACTION" = "add" ] || exit 0
+[ "$DEVICENAME" = "eth0" ] || exit 0
+
+for q in /sys/class/net/eth0/queues/rx-*/rps_cpus; do
+	[ -e "$q" ] && echo e > "$q"
+done
+
+exit 0

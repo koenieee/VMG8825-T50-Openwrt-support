@@ -1,0 +1,34 @@
+--- a/econet_qdma.c
++++ b/econet_qdma.c
+@@ -188,9 +188,29 @@
+ 	skb_mark_for_recycle(skb);
+ 	skb->ip_summed = CHECKSUM_UNNECESSARY;
+ 
++	/*
++	 * Deliberately NOT used as the skb hash.
++	 *
++	 * ppe_entry is an index into the PPE's FOE table, not a flow hash.
++	 * Feeding it to skb_set_hash() defeats RPS: with the PPE off it is 0
++	 * for every packet, and with the PPE on it takes few distinct values
++	 * for unbound flows -- either way every flow lands on the same CPU no
++	 * matter what rps_cpus says. Measured on a VMG8825-T50 (EN751627)
++	 * 2026-09-20: across 263380 packets with the PPE off, the OR of every
++	 * erx bitfield_0 was 0x000f8000 -- only sport/crsn are ever set.
++	 *
++	 * 4 parallel iperf3 streams to the router, rps_cpus=e, median of 3:
++	 *   software hash, PPE off     603 Mbit/s
++	 *   ppe_entry hash, PPE off    331-336 Mbit/s
++	 *   ppe_entry hash, PPE on     344 Mbit/s
++	 * Leaving the hash unset lets the stack compute a 5-tuple hash that
++	 * RPS can actually spread.
++	 *
++	 * Still read, because the flow-offload path needs it to find the FOE
++	 * entry a packet belongs to.
++	 */
+ 	hash = get_erx_ppe_entry(&desc.msg.erx);
+-	skb_set_hash(skb, jhash_1word(hash, 0),
+-		     PKT_HASH_TYPE_L4);
++	(void)hash;
+ 
+ 	/* TODO: When we begin supporting the PPE, we will handle
+ 	 *       PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED here. */

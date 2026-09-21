@@ -7,6 +7,14 @@ econet_setup_interfaces()
 	local board="$1"
 
 	case "$board" in
+	zyxel,vmg8825-t50)
+		# Four LAN sockets on switch ports 3 down to 0 -- the case
+		# counts them away from the blue socket, so the labels run
+		# backwards against the port numbers -- and the blue socket,
+		# printed WAN, on port 4.
+		ucidef_set_interface_lan "lan1 lan2 lan3 lan4"
+		ucidef_set_interface_wan "wan" "dhcp"
+		;;
 	dasan,h660gm-a-airtel|\
 	dasan,h660gm-a-generic|\
 	econet,en7528-generic|\

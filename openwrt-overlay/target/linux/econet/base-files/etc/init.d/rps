@@ -1,0 +1,44 @@
+#!/bin/sh /etc/rc.common
+# Enable Receive Packet Steering on the econet-eth DSA conduit (eth0).
+#
+# eth0's IRQ ("econet_eth-0.0") is always delivered to CPU0 -- there's no
+# RSS/multi-queue hardware to spread it. Without RPS, CPU0 alone does NAPI
+# poll + DSA detag + bridge/stack processing for *all* lan1-4 traffic,
+# saturates first, and starts dropping packets under load (confirmed via
+# /proc/net/softnet_stat during an iperf3 test on 2026-09-20: CPU0 alone
+# showed real drops).
+#
+# RPS moves the post-NAPI protocol-stack work for a flow onto one of
+# CPU1-3, picked by a hash of the flow's 5-tuple. It is per-flow-sticky, so
+# it can't split a single flow across cores, but it does let concurrent
+# flows use the other three. Measured on hardware 2026-09-20 with 4 parallel
+# iperf3 streams to the router: 386 Mbit/s with RPS off vs 617 Mbit/s at
+# mask 0xe. Masks including CPU0 measured worse (0xf: 576, 0xd: 555).
+#
+# NOTE: this is only effective together with the econet-eth
+# 004-rx-hash-sw-fallback.patch. Before that patch the driver stamped every
+# skb with the same constant hash taken from the (always-zero) PPE entry,
+# so RPS hashed every flow onto one CPU regardless of this mask.
+#
+# CPU0 is deliberately excluded from the mask (0xe = CPUs 1,2,3) since it's
+# already doing the IRQ/NAPI work for this queue.
+#
+# Applied both at boot and from /etc/hotplug.d/net/20-rps: econet-eth probes
+# around 14s, which is after rcS runs this script, so at boot time eth0's
+# queues usually don't exist yet and only the hotplug path actually lands.
+
+START=21
+
+apply_rps() {
+	for q in /sys/class/net/eth0/queues/rx-*/rps_cpus; do
+		[ -e "$q" ] && echo e > "$q"
+	done
+}
+
+boot() {
+	apply_rps
+}
+
+start() {
+	apply_rps
+}

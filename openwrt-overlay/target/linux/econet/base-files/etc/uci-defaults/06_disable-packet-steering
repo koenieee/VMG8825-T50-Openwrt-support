@@ -1,0 +1,23 @@
+. /lib/functions.sh
+
+# Stock OpenWrt's packet_steering service (base-files, START=25) reruns
+# /usr/libexec/network/packet-steering.uc on every network/firewall reload
+# and on every "interface.*" hotplug event -- which is common (DHCP renew,
+# wifi restart, ifup/ifdown). It recomputes rps_cpus for every netdev from
+# scratch each time, which would silently overwrite the econet-eth conduit
+# tuning done by /etc/init.d/rps (START=21, runs first at boot but loses on
+# every later reload, since packet_steering always runs after and wins).
+#
+# packet-steering.uc's heuristic also doesn't fit this SoC: eth0 has one
+# real hardware RX queue and one NAPI thread, so its "spread queues over
+# CPUs" logic degenerates to picking a single CPU for rps_cpus (or, with
+# packet_steering=2/"all_cpus", literally all CPUs including CPU0, which
+# already does the IRQ/NAPI work for eth0 -- steering a quarter of flows
+# right back onto the CPU it was trying to offload). The hand-picked mask
+# in /etc/init.d/rps (CPUs 1-3, excluding CPU0) measured +20% single-flow
+# throughput on hardware on 2026-09-20; letting the stock heuristic
+# clobber it on the next reload would silently lose that gain. Disable
+# the stock service outright rather than fight it on every reload.
+/etc/init.d/packet_steering disable
+
+exit 0

@@ -1,0 +1,127 @@
+--- a/econet_eth.c
++++ b/econet_eth.c
+@@ -497,6 +497,109 @@
+ 	platform_set_drvdata(pdev, NULL);
+ }
+ 
++/*
++ * PPE (Packet Processing Engine) register map.
++ *
++ * The SoC's PPE is the hardware flow-offload engine: once a forwarded
++ * connection is bound into its FOE (Flow Offload Engine) table, subsequent
++ * packets of that flow are switched in hardware and never reach Linux at
++ * all. This is how the OEM firmware reaches line rate on LAN<->WAN -- its
++ * proprietary hw_nat.ko ("Ralink Hardware NAT v2.01") drives exactly these
++ * registers, and its own software-RPS module only ever steers WiFi<->LAN
++ * traffic, because LAN<->WAN never touches a CPU.
++ *
++ * Offsets were recovered from that module's disassembly (every access sits
++ * under `lui reg, 0xbfb5`, i.e. the uncached alias of our own 0x1fb50000
++ * register window) and land at 0xE00-0xF34, which is inside the `ppe[]`
++ * array this driver already maps at +0xC00.
++ *
++ * They are numbered relative to that `ppe[]` base, and deliberately use
++ * upstream Linux's MTK_PPE_* offsets from
++ * drivers/net/ethernet/mediatek/mtk_ppe.h -- PPE_GLO_CFG lands at
++ * ppe_base + 0x200 = 0xE00 in both. This is the same IP block, so a future
++ * flow-binding implementation should be a port of mtk_ppe.c rather than a
++ * fresh reverse-engineering effort.
++ */
++#define PPE_GLO_CFG		0x200
++#define PPE_FLOW_CFG		0x204
++#define PPE_IP_PROT_CHK		0x208
++#define PPE_IP_PROT_0		0x20c
++#define PPE_IP_PROT_1		0x210
++#define PPE_IP_PROT_2		0x214
++#define PPE_IP_PROT_3		0x218
++#define PPE_TB_CFG		0x21c
++#define PPE_TB_BASE		0x220
++#define PPE_TB_USED		0x224
++#define PPE_BNDR		0x228
++#define PPE_BIND_LMT_0		0x22c
++#define PPE_BIND_LMT_1		0x230
++#define PPE_KA			0x234
++#define PPE_UNB_AGE		0x238
++#define PPE_BND_AGE_0		0x23c
++#define PPE_BND_AGE_1		0x240
++#define PPE_HASH_SEED		0x244
++#define PPE_DFP_CPORT		0x248
++#define PPE_MTU_DRP		0x24c
++#define PPE_MTU_VLYR_0		0x250
++#define PPE_MTU_VLYR_1		0x254
++#define PPE_MTU_VLYR_2		0x258
++#define PPE_VLAN_TPID		0x25c
++#define PPE_CAH_CTRL		0x320
++#define PPE_CAH_TAG_SRH		0x324
++#define PPE_CAH_LINE_RW		0x328
++#define PPE_CAH_WDATA		0x32c
++#define PPE_CAH_RDATA		0x330
++
++static u32 en75_ppe_rd(struct en751221_regs __iomem *regs, u32 off)
++{
++	return ioread32(&regs->ppe[off / sizeof(u32)]);
++}
++
++/*
++ * Diagnostic debugfs file: /sys/kernel/debug/ppe_regs.
++ *
++ * Read-only dump of the PPE block. This exists to establish ground truth
++ * before any flow-offload code is written -- it proves the register window
++ * is actually mapped and live on this SoC, and shows the reset state of
++ * PPE_GLO_CFG/PPE_TB_CFG (i.e. whether the bootloader left the engine
++ * enabled) and how many FOE entries are in use.
++ */
++static int en75_ppe_regs_show(struct seq_file *m, void *v)
++{
++	struct en751221_regs __iomem *regs = m->private;
++	static const struct {
++		const char	*name;
++		u32		off;
++	} dump[] = {
++		{ "PPE_GLO_CFG",	PPE_GLO_CFG },
++		{ "PPE_FLOW_CFG",	PPE_FLOW_CFG },
++		{ "PPE_IP_PROT_CHK",	PPE_IP_PROT_CHK },
++		{ "PPE_TB_CFG",		PPE_TB_CFG },
++		{ "PPE_TB_BASE",	PPE_TB_BASE },
++		{ "PPE_TB_USED",	PPE_TB_USED },
++		{ "PPE_BNDR",		PPE_BNDR },
++		{ "PPE_BIND_LMT_0",	PPE_BIND_LMT_0 },
++		{ "PPE_BIND_LMT_1",	PPE_BIND_LMT_1 },
++		{ "PPE_KA",		PPE_KA },
++		{ "PPE_UNB_AGE",	PPE_UNB_AGE },
++		{ "PPE_BND_AGE_0",	PPE_BND_AGE_0 },
++		{ "PPE_BND_AGE_1",	PPE_BND_AGE_1 },
++		{ "PPE_HASH_SEED",	PPE_HASH_SEED },
++		{ "PPE_DFP_CPORT",	PPE_DFP_CPORT },
++		{ "PPE_MTU_DRP",	PPE_MTU_DRP },
++		{ "PPE_VLAN_TPID",	PPE_VLAN_TPID },
++		{ "PPE_CAH_CTRL",	PPE_CAH_CTRL },
++	};
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(dump); i++)
++		seq_printf(m, "%-16s (0x%03x) = 0x%08x\n",
++			   dump[i].name, dump[i].off,
++			   en75_ppe_rd(regs, dump[i].off));
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(en75_ppe_regs);
++
+ /* Diagnostic debugfs file: on-demand clause-22 status of the WAN port's
+  * embedded PHY (addr 0xc). BMSR's link-status bit is latch-low, so it's
+  * read twice: first clears a stale latched-down, second reflects the
+@@ -644,6 +747,14 @@
+ 				     &en75_wan_phy_status_fops);
+ 	}
+ 
++	/* debugfs: /sys/kernel/debug/ppe_regs, read-only dump of the hardware
++	 * flow-offload engine's register block. Registered unconditionally:
++	 * the PPE lives at +0xC00, well inside the 0x8000 window the DTS maps,
++	 * unlike the switch registers at +0x58000 (has_switch_regs is false
++	 * on the VMG8825-T50 for exactly that reason). */
++	debugfs_create_file("ppe_regs", 0444, NULL, regs,
++			    &en75_ppe_regs_fops);
++
+ 	return 0;
+ 
+ error:

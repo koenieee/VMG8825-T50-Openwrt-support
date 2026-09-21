@@ -8,6 +8,14 @@ only consistent when produced together; keeping a mismatched pair around
 is actively misleading). Build your own `.trx` from source if you want
 one — see below.
 
+> **All three of `era-signed.bin`, `era-signed-locked.bin` and
+> `initramfs-kernel.bin` were rebuilt 2026-09-21** with the five-port
+> switch fix and hardware flow offload on by default. `era-signed.bin` is
+> byte-identical to the image currently running on the author's router
+> (flashed to MAIN, read back and verified). The `-installer` variant is
+> still the 2026-09-20 build and does not carry these changes.
+> See the performance section of the top-level `README.md`.
+
 - `vmg8825-t50-bootloader-patched.bin` — the patched zloader bootloader
   (mtd0): RSA-signature and CRC boot-time checks disabled, see
   `BOOTLOADER-PATCH.md`. Only flash this if your device's zloader banner

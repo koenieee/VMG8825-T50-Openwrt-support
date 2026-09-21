@@ -284,6 +284,12 @@ unit, or reads back empty/invalid), fall back per-radio to
 node's `nvmem-cells` property) — there is no automatic runtime fallback
 between the two.
 
+**Superseded 2026-09-21** — the 18/10 asymmetry below was read as a
+harmless per-unit quirk. It was not: it was the two cards having their
+bands assigned the wrong way round, and it is fixed. See the band-split
+note further down. The rest of this paragraph is kept for the reasoning
+trail.
+
 The 18dBm/10dBm asymmetry between radios was investigated and is **not
 a bug**: raw bytes at the documented mt7615 eeprom field offsets
 (`MT_EE_TX0_2G_TARGET_POWER` @0x058, `MT_EE_TX0_5G_G0_TARGET_POWER`
@@ -296,20 +302,33 @@ cards (PA binning / antenna-gain calibration done differently at the
 factory for the two radio positions), confirmable only by comparing
 against a second physical unit.
 
-Both MT7615 radios default to `5g`; a board-specific uci-defaults script
-(`base-files/etc/uci-defaults/05_vmg8825-t50-wifi-band-split`) flips
-`radio1` to `2g` on first boot for real dual-band instead of two
-overlapping 5 GHz APs. **Fixed 2026-09-20:** the script originally only
-flipped `band`, leaving `channel='36'`/`htmode='VHT80'` (5GHz-only
-values) stamped on the 2.4GHz radio by OpenWrt's auto-detect; now also
-resets `channel='auto'`/`htmode='HT20'`. Verified live by applying the
-same values by hand (uci-defaults itself won't re-fire on an
-already-provisioned unit — even `firstboot -y` only erases regular
-overlay files, not the whiteout markers that record which
-uci-defaults scripts already ran, so a true re-test needs a full UBI
-reformat, not done here) — channel/HT mode came up correct
-(`Channel: 1 (2.412 GHz)`, `HT Mode: HT20`), though as expected this
-alone doesn't move the 10dBm ceiling (see calibration note above).
+Both MT7615 radios default to `5g`; a board-specific script
+(`base-files/etc/hotplug.d/ieee80211/20-vmg8825-t50-band-split`) splits
+them for real dual-band instead of two overlapping 5 GHz APs, sets the
+matching channel/htmode, and enables both APs.
+
+**Solved 2026-09-21.** Two things were wrong and both are fixed.
+
+It never ran. The script lived in `uci-defaults`, and
+`/etc/config/wireless` does not exist that early — it is written by
+`10-wifi-detect` in `/etc/hotplug.d/ieee80211/`, once the phys appear.
+`config_foreach` therefore walked an empty list and the script exited
+successfully having done nothing, on every boot. It now runs from the
+same hotplug directory at `20`, just after the detection that creates
+the sections, writes a stamp in `/etc` so it only ever fires once, and
+kicks a detached `wifi reload` because the radios have already been
+started from the pre-correction config by the time it gets to run.
+
+It had the cards the wrong way round. The 10 dBm ceiling was never a
+mystery calibration offset: `1fb83000.pcie` is the external-PA card and
+its 2.4 GHz target-power byte at `0xf2` is zero, so putting 2.4 GHz
+there makes `mt7615_init_txpower()` clamp the radio. `1fb81000.pcie` is
+TSSI-calibrated with a 17 dBm 2.4 GHz target. Binding the bands by PCIe
+path rather than radio index — index follows probe order, calibration
+follows the card — gives 20 dBm on both radios, the regulatory ceiling,
+against 18/10 before. Verified on a cold boot: both APs come up by
+themselves, `phy0-ap0` on 2.4 GHz and `phy1-ap0` on channel 36, each
+reporting `txpower 20.00 dBm`.
 
 The STA-mode hang below is a separate, upstream `mt76`/mt7615
 firmware-stability class of bug (see

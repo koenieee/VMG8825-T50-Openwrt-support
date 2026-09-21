@@ -1,6 +1,19 @@
 . /lib/functions.sh
 
+[ "$ACTION" = "add" ] || exit 0
 [ "$(board_name)" = "zyxel,vmg8825-t50" ] || exit 0
+
+# This runs from the ieee80211 hotplug hook rather than from uci-defaults,
+# and the ordering is the whole reason. /etc/config/wireless does not exist
+# when uci-defaults runs -- it is written by 10-wifi-detect in this very
+# directory, once the phys actually appear -- so a uci-defaults script finds
+# no wifi-device sections to walk and silently does nothing. Running at 20
+# puts us just after the detection that creates them.
+#
+# Once is enough. Leaving a stamp behind means a later `wifi config`, or the
+# user's own choice of band, is not quietly overwritten on the next boot.
+STAMP=/etc/vmg8825-t50-band-split.done
+[ -f "$STAMP" ] && exit 0
 
 # Two onboard MT7615 cards, each capable of either band, so OpenWrt's
 # auto-detect puts both on 5GHz -- two overlapping 5GHz APs and no 2.4GHz
@@ -53,6 +66,20 @@ enable_iface() {
 config_load wireless
 config_foreach set_band wifi-device
 config_foreach enable_iface wifi-iface
+
+# Nothing to stamp if detection has not produced any radios yet; we will be
+# called again for the next phy.
+uci -q get wireless.radio0.path >/dev/null || exit 0
+
 uci commit wireless
+
+# Stamp before reloading, not after: `wifi reload` brings the phys back and
+# so re-enters this hook, and the stamp is what stops that from looping.
+touch "$STAMP"
+
+# The radios were already started from the config detection wrote, so the
+# band we just corrected only takes effect on a reload. Detached, because a
+# hotplug handler that waits for the interface it is restarting deadlocks.
+(/sbin/wifi reload) >/dev/null 2>&1 &
 
 exit 0

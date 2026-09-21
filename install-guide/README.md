@@ -424,9 +424,23 @@ uci set wireless.default_radio0.key=...
 uci commit wireless
 wifi
 ```
-`radio0` stays `5g`/channel 36; `radio1` is auto-switched to `2g` on
-first boot for real dual-band coverage (see `NEXT_STEPS.md` "WiFi") —
-no manual band change needed.
+The bands are assigned on first boot and both APs are enabled, so no
+manual band change is needed.
+
+Which card gets which band is not arbitrary. The two MT7615 modules are
+calibrated differently, and the calibration is what caps transmit power:
+
+| PCIe slot | calibration | band assigned |
+|---|---|---|
+| `1fb81000.pcie` | TSSI, 2.4GHz target 17dBm | `2g`, channel auto |
+| `1fb83000.pcie` | external PA, 2.4GHz target byte is **zero** | `5g`, channel 36 |
+
+Put 2.4GHz on `1fb83000` and the driver reads a target power of zero and
+clamps that radio to 10dBm — a quarter of the range, for no visible
+reason. Assigned the way the table shows it, both radios reach 20dBm, the
+regulatory ceiling. The uci-defaults script keys off the PCIe path rather
+than the radio index, because the index depends on probe order and the
+calibration does not.
 
 ## 10. Recovering from a bad flash
 

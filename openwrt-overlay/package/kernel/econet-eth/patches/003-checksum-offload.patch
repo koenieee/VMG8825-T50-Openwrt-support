@@ -76,7 +76,7 @@
  	netdev_tx_sent_queue(txq, len);
  
  	ret = en75_qdma_xmit(port->qdma, skb, &msg, 0);
-@@ -436,16 +491,36 @@
+@@ -436,16 +491,58 @@
  	 * Therefore most features are not that useful.
  	 *
  	 * NETIF_F_TSO | NETIF_F_TSO6:
@@ -91,12 +91,34 @@
 +	 *     live on hardware 2026-09-20 and it broke TCP outright (3-way
 +	 *     handshake never completes -- ICMP, which doesn't go through
 +	 *     this path, worked fine throughout, pointing at a bad checksum
-+	 *     being written and silently dropped by the peer). Root cause
-+	 *     not found -- the ICO/TCO/UCO bit semantics in qdma_desc.h are
-+	 *     themselves reverse-engineered ("probably"/"maybe"), so treat
-+	 *     en75_dev_xmit_csum() as unverified scaffolding, not a working
-+	 *     feature, until someone confirms the actual descriptor format
-+	 *     (vendor SDK, or byte-level capture of a known-good frame).
++	 *     being written and silently dropped by the peer).
++	 *
++	 *     Two more shapes were tried on hardware 2026-09-21 and both
++	 *     failed the same way -- a TCP transfer opens, moves a few tens
++	 *     of kilobytes, then stalls for good:
++	 *       - zeroing the L4 checksum field before handing the frame
++	 *         over, on the theory that the engine sums the pseudo-header
++	 *         itself and CHECKSUM_PARTIAL makes it count twice;
++	 *       - setting ICO, UCO and TCO together for every CHECKSUM_PARTIAL
++	 *         frame, the way mtk_eth_soc does with TX_DMA_CHKSUM
++	 *         (0x7 << 29), instead of picking the bit that matches the
++	 *         L4 protocol.
++	 *
++	 *     Two things that would otherwise be the first suspects are
++	 *     ruled out. The bit numbering in bitfield_1 is right: ETX_FPORT
++	 *     sits at bits 19-21 of the same word and steers packets to the
++	 *     correct port. And the peer is not discarding bad checksums --
++	 *     its TcpInCsumErrors stayed at zero across every failed run, so
++	 *     the frames are not arriving mis-summed, they stop arriving.
++	 *     That points at the transmit path itself rather than at the
++	 *     arithmetic.
++	 *
++	 *     The ICO/TCO/UCO semantics in qdma_desc.h are reverse-engineered
++	 *     ("probably"/"maybe"), and these bits may well not be checksum
++	 *     controls at all on EN751627. Treat en75_dev_xmit_csum() as
++	 *     unverified scaffolding, not a working feature, until someone
++	 *     confirms the actual descriptor format (vendor SDK, or a
++	 *     byte-level capture of a known-good frame).
  	 *
 -	 * NETIF_F_IP_CSUM | NETIF_F_RXCSUM | NETIF_F_IPV6_CSUM:
 -	 *   - Supported but disabled for simplicity.

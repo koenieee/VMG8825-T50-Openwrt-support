@@ -37,6 +37,21 @@ econet_setup_macs()
 	local label_mac=""
 
 	case "$board" in
+	zyxel,vmg8825-t50)
+		# The factory MAC lives in the bootloader's board-info block, at
+		# offset 0xff48 (65352) of the "bootloader" partition -- the same
+		# block that carries the model string and the serial number. It is
+		# the only copy on the device: the romfile, rom-d and reservearea
+		# partitions were searched byte by byte and hold no MAC at all.
+		# Without it the driver falls back to eth_hw_addr_random(), so the
+		# router asks for a fresh DHCP lease on every single boot.
+		#
+		# One address is stored, not two. The WAN socket gets the next one
+		# up, the way the vendor firmware hands out its block.
+		lan_mac="$(mtd_get_mac_binary bootloader 65352)"
+		[ -n "$lan_mac" ] && wan_mac="$(macaddr_add $lan_mac 1)"
+		label_mac=$lan_mac
+		;;
 	chinamobile,gs3101)
 		wan_mac="$(get_mac_gs3101)"
 		[ -n "$wan_mac" ] && lan_mac="$(macaddr_add $wan_mac 1)"

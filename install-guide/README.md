@@ -456,6 +456,44 @@ it overwrites your unit's values with placeholders. To keep your own,
 patch your own bootloader backup yourself — see the note in §7 and
 `BOOTLOADER-PATCH.md`.
 
+This matters more than it used to: that block, at offset `0xff48` of the
+`bootloader` partition, is where OpenWrt now reads the ethernet MAC from.
+It is the only copy on the chip — `romfile`, `rom-d` and `reservearea`
+were read byte for byte and hold no MAC at all. Flash the prebuilt
+bootloader and your router comes up as `aa:bb:cc:dd:ee:10` instead of its
+own address. That is stable and works fine; it is just not yours, so do
+not put two of them on the same network.
+
+## 12. Upgrading later (`sysupgrade`)
+
+Supported from this build on. The image to hand it is the **era-wrapped**
+one — `vmg8825-t50-era-signed.bin`, or your own
+`...-squashfs-tclinux.trx` run through `build_era_trx.py`. The plain
+`...-squashfs-sysupgrade.bin` is a different container and is rejected
+with a message rather than written; the bootloader would otherwise stop
+at "Wrong image checksum" on the next cold boot and only serial would
+get you back.
+
+```sh
+sysupgrade -v /tmp/vmg8825-t50-era-signed.bin
+```
+
+It erases `tclinux` and writes the image at offset 0 — the same thing §6
+does by hand.
+
+Your configuration is kept automatically, because the writable overlay is
+a separate UBI on the `rootfs_data` partition and nothing in the upgrade
+touches it. The flip side: `sysupgrade -n` does **not** wipe it either.
+For a clean configuration, upgrade first and then:
+
+```sh
+firstboot -y && reboot
+```
+
+Flashing the `-locked` image over the base one (or the other way round)
+is a normal upgrade — the only difference between them is whether mtd1
+is writable from Linux.
+
 ## Appendix: all-from-`ZHAL>` route — CONFIRMED UNSAFE for the bootloader, do not use for mtd0
 
 > Full write-up, including the OOB/ECC evidence and the Ghidra

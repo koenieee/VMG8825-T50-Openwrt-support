@@ -109,6 +109,28 @@
 			 * instead, which overrides this node back to read-only --
 			 * see install-guide/README.md SS7a.
 			 */
+			/*
+			 * The board-info block near the end of stage1 holds the
+			 * vendor and model strings, the serial number, and this
+			 * unit's factory MAC. It is the only copy of the MAC on
+			 * the chip -- romfile, rom-d and reservearea were read
+			 * byte for byte and have none -- so without it the
+			 * ethernet driver falls back to a random address and the
+			 * router asks for a new DHCP lease on every boot.
+			 *
+			 * Read live from each unit's own flash rather than baked
+			 * into this shared .dts, for the same reason as the WiFi
+			 * calibration below: it is per-device data.
+			 */
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				macaddr_bootloader_ff48: macaddr@ff48 {
+					reg = <0xff48 0x6>;
+				};
+			};
 		};
 
 		partition@40000 {
@@ -120,7 +142,20 @@
 		partition@80000 {
 			label = "tclinux";
 			reg = <0x80000 0x3800000>;	/* 56MiB image slot */
-			read-only;
+			/*
+			 * Writable, because this is the slot sysupgrade has to
+			 * land in (see base-files/lib/upgrade/platform.sh). It
+			 * was read-only while there was no upgrade path at all
+			 * and the only way to write it was by hand; that just
+			 * meant flashing needed a throwaway build with the flag
+			 * taken out again.
+			 *
+			 * Nothing writes here at runtime: the overlay is a
+			 * separate UBI on "rootfs_data", so these bytes stay
+			 * static between upgrades and the era header's checksum
+			 * keeps matching, which is what the bootloader checks on
+			 * a cold boot.
+			 */
 			econet,enable-remap;
 		};
 
@@ -352,15 +387,20 @@
  */
 &gmac0 {
 	status = "okay";
+
 	/*
-	 * No local-mac-address override: AA:BB:CC:DD:EE:10 is already used
-	 * by wifi slot0 and AA:BB:CC:DD:EE:11 by slot1 (see above) -- both
-	 * match this unit's real factory MAC block per bootloader ATSH.
-	 * gmac0 gets whatever the driver/kernel assigns by default for this
-	 * first link test; assign a real LAN MAC (e.g. AA:BB:CC:DD:EE:30,
-	 * from the same factory-assigned block) once this is wired to
-	 * actual LAN traffic.
+	 * The switch uplink, so this is the address the whole LAN side is
+	 * built on. Taken from the bootloader's board-info block (see the
+	 * "bootloader" partition above) instead of being left to
+	 * eth_hw_addr_random(), which handed out a different MAC on every
+	 * boot. If the nvmem provider is not up yet the driver gets
+	 * -EPROBE_DEFER and is retried, so there is no race to lose.
+	 *
+	 * board.d/02_network reads the same byte range for the lan and wan
+	 * uci interfaces, giving wan the next address up.
 	 */
+	nvmem-cells = <&macaddr_bootloader_ff48>;
+	nvmem-cell-names = "mac-address";
 };
 
 &gmac1 {

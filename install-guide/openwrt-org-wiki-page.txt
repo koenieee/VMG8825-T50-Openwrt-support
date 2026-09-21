@@ -1,0 +1,1996 @@
+
+
+
+====== ZyXEL VMG8825-T50 ======
+~~NOTOC~~
+
+/* This template is intended to be used via https://openwrt.org/meta/create_new_device_page . */
+
+The ZyXEL VMG8825-T50 is a cheap but modern modem/router that is provided by ISP's. It supports ADSL, and has an ethernet WAN port. 
+The device has built in Wifi 2.4/5Ghz with support up to Wifi AC. It has 4 ethernet port for the LAN network, one USB 2.0 port and one usb 3.0 port.
+The firmware on it is fairly restrictive, but not as bad as some other modems. Appears to run some pretty old software.
+
+/*****/
+/* How to add images ========> https://openwrt.org/meta/adding_images_to_openwrt_wiki */
+/*****/
+
+{{ media:zyxel:VMG8825-T50.jpg?200|VMG8825-T50}}
+
+
+===== OpenWrt support =====
+
+<color green>**Work in progress, not yet stable.**</color>
+
+
+
+===== Supporting activities =====
+
+See this repository for more information:
+https://github.com/koenieee/VMG8825-T50-Openwrt-support
+
+
+
+===== Experimental firmware =====
+
+
+* See here: https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed.bin
+
+And here for installation guide:
+https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/install-guide/README.md
+
+
+
+===== Hardware highlights =====
+^ CPU                        ^ Ram      ^ Flash   ^ Network     ^ WLAN   ^ USB      ^ Serial   ^ JTag   ^
+| Econet EN7516 @ 900 MHz   |  512 MiB  |  2Gb  |  1+4x 10/100/1000  |  bgn/ac   |  1x 2.0, 1x 3.0  |   Yes    |   no    |
+
+
+===== Installation =====
+
+No official/signed install path yet — you need to open the case and use
+a serial console. Full walkthrough, exact commands, safety checks:
+[[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/install-guide/README.md|install-guide/README.md]].
+This box is only the outline, don't improvise from it alone.
+
+==== Installing OpenWrt ====
+
+  - Open the case, connect a 3.3V serial adapter, confirm the bootloader banner matches the guide's precondition section.
+  - Netboot an initramfs kernel over TFTP to get a root shell without touching flash.
+  - Flash [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed-installer.bin|vmg8825-t50-era-signed-installer.bin]] to the main partition — the factory partition is an automatic fallback, this step is safe to retry.
+  - Flash the patched bootloader, [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-bootloader-patched.bin|vmg8825-t50-bootloader-patched.bin]] — **this one write has no fallback**, back up first.
+  - <color red>**Finish by reflashing**</color> [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed-locked.bin|vmg8825-t50-era-signed-locked.bin]] so the bootloader partition (mtd1) ends up **read-only** again — don't stay on the ''-installer'' image any longer than it takes to patch the bootloader.
+
+
+==== Example boot log ====
+
+Full real serial capture, from the bootloader banner through a working
+OpenWrt shell (captured on the ''-locked'' build, mtd1 read-only), to
+compare your own boot against. Redacted: the build-host string in the
+kernel version banner, and the real MAC of a nearby AP the test radio
+associated to during the WiFi check; everything else is verbatim.
+
+<code>
+BGA IC
+Xtal:1
+DDR3 init.
+DRAMC init done. 
+Calculate size.
+DRAM size=512MB
+Set new TRFC.
+ddr-1333
+
+7516DRAMC V1.0 (0)
+Press 'x' or 'b' key in 1 secs to enter or skip bootloader upgrade.
+
+
+EN751627 at Mon Jan 4 14:53:36 CST 2021 version 1.1 free bootbase
+
+Set SPI Clock to 50 Mhz
+spi_nand_probe: mfr_id=0xef, dev_id=0xab
+Using Flash ECC.
+Detected SPI NAND Flash : _SPI_NAND_DEVICE_ID_W25M02G, Flash Size=0x10000000
+bmt pool size: 163 
+BMT & BBT Init Success 
+
+
+
+ZyXEL zloader v1.4.4 (01/04/2021 - 14:53:34)
+Multiboot client version: 2.4
+Not found TC Phy
+Not found TC Phy
+Not found TC Phy
+Not found TC Phy
+Not found TC Phy
+  GE Rext AnaCal Done! (8)(0x18)  
+
+Hit any key to stop autoboot:  5
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> 
+ZHAL> ATSE VMG8825-T50
+0A00A10B09B00C10C00D00D00E00EA01D002
+ZHAL> ATEN 1,21238075263292035049394279716
+ZHAL> ATLD devfw.bin
+TFTP server is started, put your file 'devfw.bin' to server (IP is 192.168.1.1).
+.............................................................................................................................................................................................................................................................................................................
+Total 9830912 (0x960200) bytes received
+
+File download to memory address 0x80020000, length is 9830912
+ZHAL> ATER 4,451
+ZHAL> ATWF 0x80020000,0x80000,0x960200
+[DEBUG] Write len=9830912 from ram=0x80020000 to flash=0x00080000 
+................................................................................................................................................................................................................................................ZHAL> ATSE VMG8825-T50
+0A00A10B09B00C10C00D00D00EE0E3017006
+ZHAL> ATEN 1,275525053133759772204114174918
+ZHAL> ATGO
+
+ main tclinux.bin have ZYXEL trx header!
+
+ main tclinux.bin Start to decrypt RSA!
+
+==> boot flag = 0
+from main
+Decompress to 80002000 free_mem_ptr=80950000 free_mem_ptr_end=807B0000
+Uncompressing [LZMA] ...  done.
+zimage at:     800053C0 80328004
+
+Uncompressing Linux at load address 81000000
+
+Copy device tree to address  81A92820
+
+Now, booting the kernel...
+
+[    0.000000] Linux version 6.18.52 (builduser@buildhost) (mips-openwrt-linux-musl-gcc (OpenWrt GCC 14.4.0 r0-928cd26) 14.4.0, GNU ld (GNU Binutils) 2.46.1) #0 SMP Thu Sep 17 09:15:04 2026
+[    0.000000] printk: legacy bootconsole [early0] enabled
+[    0.000000] CPU0 revision is: 0001992f (MIPS 1004Kc)
+[    0.000000] MIPS: machine is Zyxel VMG8825-T50
+[    0.000000] Initrd not found or empty - disabling initrd
+[    0.000000] OF: reserved mem: Reserved memory: No reserved-memory node in the DT
+[    0.000000] VPE topology {2,2} total 4
+[    0.000000] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.000000] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.000000] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.000000] Zone ranges:
+[    0.000000]   Normal   [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] Initmem setup node 0 [mem 0x0000000000000000-0x000000000fffffff]
+[    0.000000] percpu: Embedded 12 pages/cpu s18448 r8192 d22512 u49152
+[    0.000000] Kernel command line: ubi.mtd=ubi ubi.mtd=rootfs_data
+[    0.000000] printk: log buffer data + meta data: 131072 + 409600 = 540672 bytes
+[    0.000000] Dentry cache hash table entries: 32768 (order: 5, 131072 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 16384 (order: 4, 65536 bytes, linear)
+[    0.000000] Writing ErrCtl register=0007412f
+[    0.000000] Readback ErrCtl register=0007412f
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 65536
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] SLUB: HWalign=32, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[    0.000000] rcu: Hierarchical RCU implementation.
+[    0.000000] 	Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] RCU Tasks Trace: Setting shift to 2 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=4.
+[    0.000000] NR_IRQS: 256
+[    0.000000] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[    0.000000] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.000000] clocksource: timer: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 9556302233 ns
+[    0.000004] sched_clock: 32 bits at 200MHz, resolution 5ns, wraps every 10737418237ns
+[    0.008528] timer: using 200.000 MHz high precision timer (separate IRQ mode)
+[    0.016644] Calibrating delay loop... 597.60 BogoMIPS (lpj=2988032)
+[    0.083331] pid_max: default: 32768 minimum: 301
+[    0.098991] Mount-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.106981] Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes, linear)
+[    0.132364] rcu: Hierarchical SRCU implementation.
+[    0.137639] rcu: 	Max phase no-delay instances is 1000.
+[    0.144502] smp: Bringing up secondary CPUs ...
+[    0.150381] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.150409] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.150424] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.150551] CPU1 revision is: 0001992f (MIPS 1004Kc)
+[    0.152478] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.152504] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.152517] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.152625] CPU2 revision is: 0001992f (MIPS 1004Kc)
+[    0.162815] Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+[    0.162842] Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+[    0.162856] MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+[    0.162970] CPU3 revision is: 0001992f (MIPS 1004Kc)
+[    0.163154] smp: Brought up 1 node, 4 CPUs
+[    0.252102] Memory: 245572K/262144K available (8297K kernel code, 641K rwdata, 1668K rodata, 1288K init, 225K bss, 14920K reserved, 0K cma-reserved)
+[    0.270842] posixtimers hash table entries: 2048 (order: 2, 16384 bytes, linear)
+[    0.279119] futex hash table entries: 1024 (32768 bytes on 1 NUMA nodes, total 32 KiB, linear).
+[    0.297938] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.308169] /pcie@1fb81000: Fixed dependency cycle(s) with /pcie@1fb81000/interrupt-controller
+[    0.318237] /pcie@1fb83000: Fixed dependency cycle(s) with /pcie@1fb83000/interrupt-controller
+[    0.337751] usbcore: registered new interface driver usbfs
+[    0.343770] usbcore: registered new interface driver hub
+[    0.349625] usbcore: registered new device driver usb
+[    0.356656] clocksource: Switched to clocksource timer
+[    0.372420] NET: Registered PF_INET protocol family
+[    0.378009] IP idents hash table entries: 4096 (order: 3, 32768 bytes, linear)
+[    0.387262] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 4096 bytes, linear)
+[    0.396385] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.404911] TCP established hash table entries: 2048 (order: 1, 8192 bytes, linear)
+[    0.413346] TCP bind hash table entries: 2048 (order: 3, 32768 bytes, linear)
+[    0.421290] TCP: Hash tables configured (established 2048 bind 2048)
+[    0.428927] MPTCP token hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.437196] UDP hash table entries: 256 (order: 2, 14336 bytes, linear)
+[    0.444422] UDP-Lite hash table entries: 256 (order: 2, 14336 bytes, linear)
+[    0.453197] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.459459] PCI: CLS 0 bytes, default 32
+[    0.466812] workingset: timestamp_bits=14 max_order=16 bucket_order=2
+[    0.476969] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.490424] mtk-pcie 1fb81000.pcie: host bridge /pcie@1fb81000 ranges:
+[    0.497751] mtk-pcie 1fb81000.pcie:       IO 0x001f600000..0x001f60ffff -> 0x0000000000
+[    0.506545] mtk-pcie 1fb81000.pcie:      MEM 0x0020000000..0x0027ffffff -> 0x0020000000
+[    1.046136] mtk-pcie 1fb81000.pcie: PCI host bridge to bus 0000:00
+[    1.052938] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    1.058918] pci_bus 0000:00: root bus resource [io  0x0000-0xffff]
+[    1.065673] pci_bus 0000:00: root bus resource [mem 0x20000000-0x27ffffff]
+[    1.073567] pci 0000:00:00.0: [14c3:0810] type 01 class 0x060400 PCIe Root Port
+[    1.081837] pci 0000:00:00.0: PCI bridge to [bus 00]
+[    1.087311] pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff]
+[    1.096660] pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    1.106258] pci 0000:01:00.0: [14c3:7615] type 00 class 0x000280 PCIe Endpoint
+[    1.114611] pci 0000:01:00.0: BAR 0 [mem 0x00000000-0x000fffff 64bit]
+[    1.122500] pci 0000:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe x1 link at 0000:00:00.0 (capable of 4.000 Gb/s with 5.0 GT/s PCIe x1 link)
+[    1.139215] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[    1.144923] pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+[    1.152238] pci 0000:00:00.0: bridge window [mem 0x20000000-0x200fffff]: assigned
+[    1.160420] pci 0000:01:00.0: BAR 0 [mem 0x20000000-0x200fffff 64bit]: assigned
+[    1.168518] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    1.173922] pci 0000:00:00.0:   bridge window [mem 0x20000000-0x200fffff]
+[    1.181421] pci_bus 0000:00: resource 4 [io  0x0000-0xffff]
+[    1.187501] pci_bus 0000:00: resource 5 [mem 0x20000000-0x27ffffff]
+[    1.194336] pci_bus 0000:01: resource 1 [mem 0x20000000-0x200fffff]
+[    1.216697] pci 0000:00:00.0: link retrained, speed 5.0 GT/s PCIe
+[    1.223875] mtk-pcie 1fb83000.pcie: host bridge /pcie@1fb83000 ranges:
+[    1.231092] mtk-pcie 1fb83000.pcie:       IO 0x001f610000..0x001f61ffff -> 0x0000000000
+[    1.239857] mtk-pcie 1fb83000.pcie:      MEM 0x0028000000..0x002fffffff -> 0x0028000000
+[    1.386119] mtk-pcie 1fb83000.pcie: PCI host bridge to bus 0001:00
+[    1.392928] pci_bus 0001:00: root bus resource [bus 00-ff]
+[    1.398912] pci_bus 0001:00: root bus resource [mem 0x28000000-0x2fffffff]
+[    1.406772] pci 0001:00:01.0: [14c3:0811] type 01 class 0x060400 PCIe Root Port
+[    1.415016] pci 0001:00:01.0: PCI bridge to [bus 00]
+[    1.420489] pci 0001:00:01.0:   bridge window [mem 0x00000000-0x000fffff]
+[    1.429804] pci 0001:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    1.439385] pci 0001:01:00.0: [14c3:7615] type 00 class 0x000280 PCIe Endpoint
+[    1.447744] pci 0001:01:00.0: BAR 0 [mem 0x00000000-0x000fffff 64bit]
+[    1.455608] pci 0001:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe x1 link at 0001:00:01.0 (capable of 4.000 Gb/s with 5.0 GT/s PCIe x1 link)
+[    1.472330] pci 0001:00:01.0: PCI bridge to [bus 01-ff]
+[    1.478065] pci_bus 0001:01: busn_res: [bus 01-ff] end is updated to 01
+[    1.485324] pci 0001:00:01.0: bridge window [mem 0x28000000-0x280fffff]: assigned
+[    1.493504] pci 0001:01:00.0: BAR 0 [mem 0x28000000-0x280fffff 64bit]: assigned
+[    1.501604] pci 0001:00:01.0: PCI bridge to [bus 01]
+[    1.507030] pci 0001:00:01.0:   bridge window [mem 0x28000000-0x280fffff]
+[    1.514498] pci_bus 0001:00: resource 4 [mem 0x28000000-0x2fffffff]
+[    1.521320] pci_bus 0001:01: resource 1 [mem 0x28000000-0x280fffff]
+[    1.546695] pci 0001:00:01.0: link retrained, speed 5.0 GT/s PCIe
+[    1.554594] Serial: 8250/16550 driver, 2 ports, IRQ sharing disabled
+[    1.563649] printk: legacy console [ttyS0] disabled
+[    1.569827] 1fbf0000.serial: ttyS0 at MMIO 0x1fbf0000 (irq = 22, base_baud = 460800) is a Airoha 16550
+[    1.580104] printk: legacy console [ttyS0] enabled
+[    1.580104] printk: legacy console [ttyS0] enabled
+[    1.590099] printk: legacy bootconsole [early0] disabled
+[    1.590099] printk: legacy bootconsole [early0] disabled
+[    1.608001] spi-nand spi0.0: Winbond SPI NAND was found.
+[    1.613362] spi-nand spi0.0: 256 MiB, block size: 128 KiB, page size: 2048, OOB size: 64
+[    1.622568] en75_bmt: found BMT in block 2047
+[    1.696541] en75_bmt: enable-remap set for /spi@1fa10000/nand@0/partitions/partition@80000
+[    1.704914] en75_bmt: BBT not found and econet,can-write-factory-bbt is unset, giving up
+[    1.713534] 11 fixed-partitions partitions found on MTD device spi0.0
+[    1.720052] Creating 11 MTD partitions on "spi0.0":
+[    1.724952] 0x000000000000-0x000010000000 : "all_of_flash"
+[    2.354542] 0x000000000000-0x000000040000 : "bootloader"
+[    2.360987] 0x000000040000-0x000000080000 : "romfile"
+[    2.367136] 0x000000080000-0x000003880000 : "tclinux"
+[    2.373667] 0x000000480000-0x000003880000 : "ubi"
+[    2.379828] 0x000003880000-0x000006ee0000 : "tclinux_slave"
+[    2.386896] 0x000006ee0000-0x000006fe0000 : "wwan"
+[    2.392712] 0x000006fe0000-0x0000073e0000 : "data"
+[    2.398857] 0x0000073e0000-0x0000074e0000 : "rom-d"
+[    2.404864] 0x0000074e0000-0x0000098e0000 : "reservearea"
+[    2.411669] 0x0000098e0000-0x00000eae0000 : "rootfs_data"
+[    2.432442] phy phy-1fa80000.usb-phy.0: frequency meter result 0x91, set slew rate 0x4
+[    2.441992] xhci-mtk 1fb90000.usb: xHCI Host Controller
+[    2.447299] xhci-mtk 1fb90000.usb: new USB bus registered, assigned bus number 1
+[    2.455009] xhci-mtk 1fb90000.usb: hcc params 0x01401198 hci version 0x96 quirks 0x0000000000280810
+[    2.464228] xhci-mtk 1fb90000.usb: irq 23, io mem 0x1fb90000
+[    2.470254] xhci-mtk 1fb90000.usb: xHCI Host Controller
+[    2.475544] xhci-mtk 1fb90000.usb: new USB bus registered, assigned bus number 2
+[    2.483027] xhci-mtk 1fb90000.usb: Host supports USB 3.0 SuperSpeed
+[    2.490363] hub 1-0:1.0: USB hub found
+[    2.494248] hub 1-0:1.0: 2 ports detected
+[    2.500170] hub 2-0:1.0: USB hub found
+[    2.504041] hub 2-0:1.0: 1 port detected
+[    2.511437] NET: Registered PF_INET6 protocol family
+[    2.519701] Segment Routing with IPv6
+[    2.523489] In-situ OAM (IOAM) with IPv6
+[    2.527652] NET: Registered PF_PACKET protocol family
+[    2.532784] 8021q: 802.1Q VLAN Support v1.8
+[    2.564328] ubi0: attaching mtd4
+[    2.601648] UBI: EOF marker found, PEBs from 38 will be erased
+[    2.607972] ubi0: scanning is finished
+[    2.688016] ubi0: attached mtd4 (name "ubi", size 52 MiB)
+[    2.693465] ubi0: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    2.700423] ubi0: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    2.707288] ubi0: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    2.714268] ubi0: good PEBs: 416, bad PEBs: 0, corrupted PEBs: 0
+[    2.720318] ubi0: user volume: 1, internal volumes: 1, max. volumes count: 128
+[    2.727593] ubi0: max/mean erase counter: 0/0, WL threshold: 4096, image sequence number: 1789636504
+[    2.736771] ubi0: available PEBs: 350, total reserved PEBs: 66, PEBs reserved for bad PEB handling: 26
+[    2.746128] ubi0: background thread "ubi_bgt0d" started, PID 337
+[    2.748653] block ubiblock0_0: created from ubi0:0(rootfs)
+[    2.757753] ubiblock: device ubiblock0_0 (rootfs) set to be root filesystem
+[    2.764806] ubi1: attaching mtd10
+[    2.996908] usb 1-2: new high-speed USB device number 2 using xhci-mtk
+[    3.890226] ubi1: scanning is finished
+[    3.906072] ubi1: attached mtd10 (name "rootfs_data", size 82 MiB)
+[    3.912372] ubi1: PEB size: 131072 bytes (128 KiB), LEB size: 126976 bytes
+[    3.919288] ubi1: min./max. I/O unit sizes: 2048/2048, sub-page size 2048
+[    3.926091] ubi1: VID header offset: 2048 (aligned 2048), data offset: 4096
+[    3.933095] ubi1: good PEBs: 656, bad PEBs: 0, corrupted PEBs: 0
+[    3.939148] ubi1: user volume: 1, internal volumes: 1, max. volumes count: 128
+[    3.946386] ubi1: max/mean erase counter: 2/1, WL threshold: 4096, image sequence number: 1149877678
+[    3.955559] ubi1: available PEBs: 0, total reserved PEBs: 656, PEBs reserved for bad PEB handling: 26
+[    3.964855] ubi1: background thread "ubi_bgt1d" started, PID 345
+[    3.966449] clk: Disabling unused clocks
+[    3.975263] check access for rdinit=/init failed: -2, ignoring
+[    3.989407] VFS: Mounted root (squashfs filesystem) readonly on device 254:0.
+[    4.000397] Freeing unused kernel image (initmem) memory: 1288K
+[    4.006372] This architecture does not have kernel memory protection.
+[    4.012940] Run /sbin/init as init process
+[    4.627032] init: Console is alive
+[    5.375986] kmodloader: loading kernel modules from /etc/modules-boot.d/*
+[    5.422043] gpio_button_hotplug: loading out-of-tree module taints kernel.
+[    5.434040] kmodloader: done loading kernel modules from /etc/modules-boot.d/*
+[    5.451018] init: - preinit -
+[    7.236666] random: crng init done
+Press the [f] key and hit [enter] to enter failsafe mode
+Press the [1], [2], [3] or [4] key and hit [enter] to select the debug level
+[   11.596524] UBIFS (ubi1:0): Mounting in unauthenticated mode
+[   11.602679] UBIFS (ubi1:0): background thread "ubifs_bgt1_0" started, PID 448
+[   11.661505] UBIFS (ubi1:0): recovery needed
+[   11.787344] UBIFS (ubi1:0): recovery completed
+[   11.791994] UBIFS (ubi1:0): UBIFS: mounted UBI device 1, volume 0, name "rootfs_data"
+[   11.799878] UBIFS (ubi1:0): LEB size: 126976 bytes (124 KiB), min./max. I/O unit sizes: 2048 bytes/2048 bytes
+[   11.809836] UBIFS (ubi1:0): FS size: 78217216 bytes (74 MiB, 616 LEBs), max 626 LEBs, journal size 3936256 bytes (3 MiB, 31 LEBs)
+[   11.821541] UBIFS (ubi1:0): reserved for root: 3694391 bytes (3607 KiB)
+[   11.828208] UBIFS (ubi1:0): media format: w5/r0 (latest is w5/r0), UUID 4EDE4A47-D030-4806-BD91-F55AAB597AD8, small LPT model
+[   11.848106] mount_root: switching to ubifs overlay
+[   11.872020] urandom-seed: Seeding with /etc/urandom.seed
+[   12.047542] procd: - early -
+[   12.619327] procd: - ubus -
+[   12.721355] procd: - init -
+Please press Enter to activate this console.
+[   13.919571] kmodloader: loading kernel modules from /etc/modules.d/*
+[   14.505528] i2c_dev: i2c /dev entries driver
+[   14.545472] econet_eth 1fb50000.ethernet: generated random MAC address ca:04:d5:96:0a:c5
+[   14.555810] urngd: v1.0.2 started.
+[   14.610697] econet_eth 1fb50000.ethernet: port 1 (LAN) registered with ca:04:d5:96:0a:c5
+[   14.619655] econet_eth 1fb50000.ethernet: generated random MAC address 66:1d:47:e3:f8:30
+[   14.764766] econet_eth 1fb50000.ethernet: port 2 (WAN) registered with 66:1d:47:e3:f8:30
+[   14.792743] Loading modules backported from Linux version v7.2-0-g8d3ae59288f1
+[   14.800077] Backport generated by backports.git v5.15.58-1-198-g2580fa90cb79
+[   15.097452] pci 0000:00:00.0: enabling device (0000 -> 0002)
+[   15.103242] mt7615e 0000:01:00.0: enabling device (0000 -> 0002)
+[   15.115505] mt7615e 0000:01:00.0: registering led 'mt76-phy0'
+[   15.192224] pci 0001:00:01.0: enabling device (0000 -> 0002)
+[   15.198131] mt7615e 0001:01:00.0: enabling device (0000 -> 0002)
+[   15.214417] mt7615e 0001:01:00.0: registering led 'mt76-phy1'
+[   15.346898] mt7615e 0000:01:00.0: HW/SW Version: 0x8a108a10, Build Time: 20180518100604a
+[   15.346898] 
+[   15.417250] mt7615e 0001:01:00.0: HW/SW Version: 0x8a108a10, Build Time: 20180518100604a
+[   15.417250] 
+[   15.514927] PPP generic driver version 2.4.2
+[   15.523682] NET: Registered PF_PPPOX protocol family
+[   15.549539] kmodloader: done loading kernel modules from /etc/modules.d/*
+[   15.599713] mt7615e 0000:01:00.0: N9 Firmware Version: _reserved_, Build Time: 20200814163649
+[   15.608567] mt7615e 0001:01:00.0: N9 Firmware Version: _reserved_, Build Time: 20200814163649
+[   15.634528] mt7615e 0001:01:00.0: CR4 Firmware Version: _reserved_, Build Time: 20190415154149
+[   15.643641] mt7615e 0000:01:00.0: CR4 Firmware Version: _reserved_, Build Time: 20190415154149
+[   22.379593] br-lan: port 1(eth0) entered blocking state
+[   22.384946] br-lan: port 1(eth0) entered disabled state
+[   22.390526] econet_eth 1fb50000.ethernet eth0: entered allmulticast mode
+[   22.397959] econet_eth 1fb50000.ethernet eth0: entered promiscuous mode
+[   22.412670] br-lan: port 1(eth0) entered blocking state
+[   22.418099] br-lan: port 1(eth0) entered forwarding state
+[   24.525796] br-lan: port 2(phy1-ap0) entered blocking state
+[   24.531576] br-lan: port 2(phy1-ap0) entered disabled state
+[   24.537399] mt7615e 0001:01:00.0 phy1-ap0: entered allmulticast mode
+[   24.544321] mt7615e 0001:01:00.0 phy1-ap0: entered promiscuous mode
+[   26.085469] br-lan: port 2(phy1-ap0) entered blocking state
+[   26.091192] br-lan: port 2(phy1-ap0) entered forwarding state
+[   29.948012] phy0-sta0: authenticate with xx:xx:xx:xx:xx:xx (local address=aa:bb:cc:dd:ee:ff)
+[   29.956517] phy0-sta0: send auth to xx:xx:xx:xx:xx:xx (try 1/3)
+[   30.066698] phy0-sta0: send auth to xx:xx:xx:xx:xx:xx (try 2/3)
+[   30.078075] phy0-sta0: authenticated
+[   30.086738] phy0-sta0: associate with xx:xx:xx:xx:xx:xx (try 1/3)
+[   30.108883] phy0-sta0: RX AssocResp from xx:xx:xx:xx:xx:xx (capab=0x1511 status=0 aid=10)
+[   30.118471] phy0-sta0: associated
+</code>
+
+
+/*** if info available: uncomment and fill in
+===== Debricking =====
+-> [[docs:guide-user:troubleshooting:generic.debrick]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Failsafe mode =====
+-> [[docs:guide-user:troubleshooting:failsafe_and_factory_reset]]
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Basic configuration =====
+After flashing, proceed with [[docs:guide-user:base-system:start|Basic configuration]]: Set up your Internet connection, configure wireless, configure USB port, etc.
+***/
+
+
+/*** if info available: uncomment and fill in
+===== Specific configuration =====
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+==== Network interfaces ====
+The default network configuration is:
+^ Interface Name   ^ Description                  ^ Default configuration    ^
+| br-lan           | EXAMPLE LAN & WiFi           | EXAMPLE 192.168.1.1/24   |
+| vlan0 (eth0.0)   | EXAMPLE LAN ports (1 to 4)   | EXAMPLE None             |
+| vlan1 (eth0.1)   | EXAMPLE WAN port             | EXAMPLE DHCP             |
+| wl0              | EXAMPLE WiFi                 | EXAMPLE Disabled         |
+</WRAP>
+***/
+
+
+/*** if info available: uncomment and fill in
+==== Buttons ====
+-> [[docs:guide-user:hardware:hardware.button]] on howto use and configure the hardware button(s).
+Here, we merely name the buttons, so we can use them in the above Howto.
+
+<WRAP BOX 600px>
+FIXME Please fill in real values for this device, then remove the EXAMPLEs and the WRAP that encloses this text.
+
+The ZyXEL VMG8825-T50 has the following buttons:
+
+^ BUTTON                       ^ Event   ^
+| EXAMPLE Reset                |  reset  |
+| EXAMPLE Secure Easy Setup    |   ses   |
+| EXAMPLE No buttons at all.   |    -    |
+</WRAP>
+***/
+
+
+===== Hardware =====
+==== Info ====
+^ Architecture     | MIPS                                     |
+^ Vendor           | [[https://www.mediatek.com/|MediaTek]]/EcoNet                          |
+^ Bootloader       | ZyXEL zloader v1.4.4                     |
+^ System-On-Chip   | [[http://www.econet-inc.com/product/view?product_category_id=2&product_id=62|EcoNet EN7516]] - MIPS32® 1004K™ V4.12   |
+^ CPU/Speed        | Dual core 2x900 MHz                                  |
+^ Flash-Chip       | [[https://www.winbond.com/hq/product/code-storage-flash-memory/qspinand-flash/index.html?__locale=en&partNo=W25M02GV|Winbond W25M02GV]] |
+^ Flash size       | 2Gb                                      | 
+^ RAM              | 512MB                                    |
+^ Wireless         | [[https://www.mediatek.com/products/broadbandWifi/mt7615|MT7615]] Wi-Fi 5 (b/g/n/ac) |
+^ Ethernet         | 1x WAN, 4x LAN (10/100/1000Mbit/s w/ vlan support)    |
+^ Switch           | Built in to SoC                          |
+^ USB              | 1x 2.0, 1x 3.0                           |
+^ Serial           | [[#Serial|Yes]]                          |
+^ JTAG             | No                                       |
+
+
+/*** if info available: uncomment and fill in
+==== Flash Layout ====
+<WRAP BOX>
+FIXME //[[:docs:techref:flash.layout#discovery_how_to_find_out|Find out flash layout]], then add the flash layout table here (copy, paste, modify the [[docs:techref:flash.layout#partitioning_of_squashfs-images|example]]).//
+
+Please check out the article [[docs:techref:flash.layout|Flash layout]]. It contains examples and explanations that describe how to document the flash layout.
+</WRAP>
+***/
+
+
+==== Photos ====
+{{media:zyxel:vmg8825-t50-front.jpg?400|}}
+
+{{media:zyxel:vmg8825-t50-back.jpg?400|}}
+
+{{media:zyxel:vmg8825-t50-pcb.jpg?400|}}
+
+==== Opening the case ====
+
+You only need to remove to Philips screws at the back of the unit.
+After that, you will be able to separate the back and front plastic pieces of the device.
+The parts are still hold together with clips, if you insert a small plastic part in the gap between the two pieces you should be able to pry it open fairly easily.
+
+==== Serial ====
+
+I've used this USB to serial adapter to connect to the device:
+https://www.kiwi-electronics.nl/usb-to-ttl-serial-kabel?lang=en
+
+{{media:zyxel:vmg8825-t50_serial.jpg?200|Shows what pins to connect to for serial console}}
+{{media:zyxel:vmg8825-t50_serial_closeup.jpg?400|Shows what pins to connect to for serial console}}
+
+
+^ Serial connection parameters\\ for ZyXEL VMG8825-T50  | 115200, 8N1 |
+
+
+===== Bootlogs =====
+==== OEM bootlog ====
+<WRAP bootlog>
+<nowiki>
+BGA IC
+Xtal:1
+DDR3 init.
+DRAMC init done. 
+Calculate size.
+DRAM size=512MB
+Set new TRFC.
+ddr-1333
+
+
+7516DRAMC V1.0 (0)
+
+Press 'x' or 'b' key in 1 secs to enter or skip bootloader upgrade.
+
+
+EN751627 at Fri May 15 15:20:05 CST 2020 version 1.1 free bootbase
+
+Set SPI Clock to 50 Mhz
+spi_nand_probe: mfr_id=0xef, dev_id=0xab
+Using Flash ECC.
+Detected SPI NAND Flash : _SPI_NAND_DEVICE_ID_W25M02G, Flash Size=0x10000000
+bmt pool size: 163 
+BMT & BBT Init Success 
+
+
+
+ZyXEL zloader v1.4.4 (05/15/2020 - 15:20:04)
+Multiboot client version: 2.4
+Not found TC Phy
+
+Not found TC Phy
+
+Not found TC Phy
+
+Not found TC Phy
+
+Not found TC Phy
+
+  GE Rext AnaCal Done! (4)(0x1c)  
+
+
+Hit any key to stop autoboot:  0
+
+ main tclinux.bin have ZYXEL trx header!
+
+
+ main tclinux.bin Start to decrypt RSA!
+
+
+==> boot flag = 0
+from main
+Decompress to 80002000 free_mem_ptr=80950000 free_mem_ptr_end=807B0000
+Uncompressing [LZMA] ...  done.
+Initializing cgroup subsys cpuset
+Initializing cgroup subsys cpu
+Initializing cgroup subsys cpuacct
+Linux version 3.18.21 (howard@TWPCZT02587-03) (gcc version 4.6.3 (OpenWrt GCC 4.6.3 unknown) ) #2 SMP Fri May 15 16:39:01 CST 2020
+memsize:432MB
+EcoNet EN751627 SOC prom init
+bootconsole [early0] enabled
+CPU0 revision is: 0001992f (MIPS 1004Kc)
+Determined physical RAM map:
+ memory: 1affe000 @ 00002000 (usable)
+Wasting 64 bytes for tracking 2 unused pages
+Zone ranges:
+  Normal   [mem 0x00002000-0x1affffff]
+Movable zone start for each node
+Early memory node ranges
+  node   0: [mem 0x00002000-0x1affffff]
+Initmem setup node 0 [mem 0x00002000-0x1affffff]
+Detected 3 available secondary CPU(s)
+Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+PERCPU: Embedded 9 pages/cpu @81364000 s6272 r8192 d22400 u36864
+Built 1 zonelists in Zone order, mobility grouping on.  Total pages: 109726
+Kernel command line: 
+log_buf_len individual max cpu contribution: 4096 bytes
+log_buf_len total cpu_extra contributions: 12288 bytes
+log_buf_len min size: 16384 bytes
+log_buf_len: 32768 bytes
+early log buf free: 14280(87%)
+PID hash table entries: 2048 (order: 1, 8192 bytes)
+Dentry cache hash table entries: 65536 (order: 6, 262144 bytes)
+Inode-cache hash table entries: 32768 (order: 5, 131072 bytes)
+Writing ErrCtl register=0007c95f
+Readback ErrCtl register=0007c95f
+nmi base is 813fc200
+Memory: 431420K/442360K available (4925K kernel code, 216K rwdata, 936K rodata, 240K init, 541K bss, 10940K reserved)
+SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+Hierarchical RCU implementation.
+NR_IRQS:64
+
+
+tc3162_time_init: Init bus timeout and watchdog
+
+CPU frequency 900.00 MHz
+plat_time_init: Entered, mips_timer_ack ptr is [80007378]
+
+ Using 200.000 MHz high precision timer.
+r4k_clockevent_init: setup_irq OK, irq is [52]
+
+console [ttyS0] enabled
+console [ttyS0] enabled
+bootconsole [early0] disabled
+bootconsole [early0] disabled
+Calibrating delay loop... 589.00 BogoMIPS (lpj=2945024)
+pid_max: default: 32768 minimum: 301
+Security Framework initialized
+Mount-cache hash table entries: 1024 (order: 0, 4096 bytes)
+Mountpoint-cache hash table entries: 1024 (order: 0, 4096 bytes)
+Initializing cgroup subsys devices
+Initializing cgroup subsys freezer
+Initializing cgroup subsys net_cls
+Initializing cgroup subsys blkio
+Initializing cgroup subsys debug
+34K sync es set to 0.
+Config7: 0x80090500
+launch: starting cpu1
+launch: cpu1 gone!
+Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+CPU1 revision is: 0001992f (MIPS 1004Kc)
+Synchronize counters for CPU 1: done.
+launch: starting cpu2
+launch: cpu2 gone!
+Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+CPU2 revision is: 0001992f (MIPS 1004Kc)
+Synchronize counters for CPU 2: done.
+launch: starting cpu3
+launch: cpu3 gone!
+Primary instruction cache 32kB, VIPT, 4-way, linesize 32 bytes.
+Primary data cache 32kB, 4-way, PIPT, no aliases, linesize 32 bytes
+MIPS secondary cache 256kB, 8-way, linesize 32 bytes.
+CPU3 revision is: 0001992f (MIPS 1004Kc)
+Synchronize counters for CPU 3: done.
+Brought up 4 CPUs
+devtmpfs: initialized
+NET: Registered protocol family 16
+PCIe 7516 PHY init  
+PCIe driver version: 751627.1.20170815
+EN751627 pcie_init
+check pcie link up status: 
+isRC0_LINKUP=1 
+isRC1_LINKUP=1 
+registering PCI controller with io_map_base unset
+Initializing Ecnt Event Netlink Socket
+
+Initializing Econet Event Netlink Socket nl_sk = 9ad58800
+
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+PCI host bridge to bus 0000:00
+pci_bus 0000:00: root bus resource [mem 0x20000000-0x2fffffff]
+pci_bus 0000:00: root bus resource [io  0x1f600000-0x1f61ffff]
+pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+pci 0000:00:01.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+pci 0000:00:00.0: BAR 8: assigned [mem 0x20000000-0x200fffff]
+pci 0000:00:01.0: BAR 8: assigned [mem 0x20100000-0x201fffff]
+pci 0000:01:00.0: BAR 0: assigned [mem 0x20000000-0x200fffff 64bit]
+pci 0000:00:00.0: PCI bridge to [bus 01]
+pci 0000:00:00.0:   bridge window [mem 0x20000000-0x200fffff]
+pci 0000:02:00.0: BAR 0: assigned [mem 0x20100000-0x201fffff 64bit]
+pci 0000:00:01.0: PCI bridge to [bus 02]
+pci 0000:00:01.0:   bridge window [mem 0x20100000-0x201fffff]
+NET: Registered protocol family 8
+NET: Registered protocol family 20
+Switched to clocksource MIPS
+NET: Registered protocol family 2
+TCP established hash table entries: 4096 (order: 2, 16384 bytes)
+TCP bind hash table entries: 4096 (order: 3, 32768 bytes)
+TCP: Hash tables configured (established 4096 bind 4096)
+TCP: reno registered
+UDP hash table entries: 256 (order: 1, 8192 bytes)
+UDP-Lite hash table entries: 256 (order: 1, 8192 bytes)
+NET: Registered protocol family 1
+
+ mt7512_pcie_fixup: 0x1438 = 20000014 
+ mt7512_pcie_rc0_retrain: 80 = 01408c12 80 = 01608c12
+RC0 Link Traing Result: 10120008
+ mt7512_pcie_fixup: 0x3438 = 20100014 
+ mt7512_pcie_rc1_retrain: 80 = 01408c12 80 = 01608c12
+RC1 Link Traing Result: 10120008
+TC3162 hardware watchdog module loaded.
+USB overcurrent protection.
+futex hash table entries: 1024 (order: 4, 65536 bytes)
+squashfs: version 4.0 (2009/01/31) Phillip Lougher
+ntfs: driver 2.1.31 [Flags: R/W DEBUG].
+msgmni has been set to 842
+io scheduler noop registered (default)
+ttyS0 at I/O 0xbfbf0003 (irq = 5, base_baud = 7200) is a TC3162
+ECNT ring buffer init success
+Init UART2 and UART3, still need to trun on for using.
+ttyS20 at I/O 0xbfbf0300 (irq = 4, base_baud = 7200) is a TC3162
+ttyS30 at I/O 0xbfbe1000 (irq = 3, base_baud = 7200) is a TC3162
+brd: module loaded
+
+SPI Flash Init Start
+Found no SPI flash device
+IS_SPIFLASH=0x0, IS_NANDFLASH=0x2, (0xBFA10114)=0x6)
+Set SPI Clock to 50 Mhz
+spi_nand_probe: mfr_id=0xef, dev_id=0xab
+Using Flash ECC.
+Detected SPI NAND Flash : _SPI_NAND_DEVICE_ID_W25M02G, Flash Size=0x10000000
+spi nand flash
+tc3162: flash device 0x01000000 at 0x1c000000
+EN7512 mtd init: spi nand probe enter
+[spi_nand_setup] : Enter 
+nand: device found, Manufacturer ID: 0xef, Chip ID: 0xab
+nand: Unknown _SPI_NAND_DEVICE_ID_W25M02G
+nand: 256MiB, SLC, page size: 2048, OOB size: 64
+nand_scan_ident ok
+[spi_nand_setup]: chip size =  0x10000000, erase_shift=0x11
+bmt pool size: 163 
+BMT & BBT Init Success 
+
+parsing <0[bootloader],0[romfile],56M[tclinux],-[tclinux_slave],1M[wwan],4M[data],1M[rom-d],118M[misc]>
+partition 11: name <misc>, offset ffffffff, size 7600000, mask flags 0
+partition 10: name <rom-d>, offset ffffffff, size 100000, mask flags 0
+partition 9: name <data>, offset ffffffff, size 400000, mask flags 0
+partition 8: name <wwan>, offset ffffffff, size 100000, mask flags 0
+partition 7: name <tclinux_slave>, offset ffffffff, size ffffffff, mask flags 0
+partition 4: name <tclinux>, offset ffffffff, size 3800000, mask flags 0
+partition 1: name <romfile>, offset ffffffff, size fffffffe, mask flags 0
+partition 0: name <bootloader>, offset ffffffff, size fffffffe, mask flags 0
+Creating 13 MTD partitions on "EN7512-SPI_NAND":
+0x000000000000-0x000000040000 : "bootloader"
+0x000000040000-0x000000080000 : "romfile"
+0x000000080000-0x00000028ccdd : "kernel"
+mtd: partition "kernel" doesn't end on an erase block -- force read-only
+0x00000028ccdd-0x0000016ccce1 : "rootfs"
+mtd: partition "rootfs" doesn't start on an erase block boundary -- force read-only
+0x000000080000-0x000003880000 : "tclinux"
+0x000003880000-0x000003a8cc01 : "kernel_slave"
+mtd: partition "kernel_slave" doesn't end on an erase block -- force read-only
+0x000003a8cc01-0x000004e0cc05 : "rootfs_slave"
+mtd: partition "rootfs_slave" doesn't start on an erase block boundary -- force read-only
+0x000003880000-0x000006ee0000 : "tclinux_slave"
+0x000006ee0000-0x000006fe0000 : "wwan"
+0x000006fe0000-0x0000073e0000 : "data"
+0x0000073e0000-0x0000074e0000 : "rom-d"
+0x0000074e0000-0x00000eae0000 : "misc"
+0x00000eae0000-0x00000eba0000 : "reservearea"
+
+
+rootfs
+PPP generic driver version 2.4.2
+PPP BSD Compression module registered
+PPP Deflate Compression module registered
+NET: Registered protocol family 24
+usbcore: registered new interface driver cdc_acm
+cdc_acm: USB Abstract Control Model driver for USB modems and ISDN adapters
+usbcore: registered new interface driver usbserial
+usbcore: registered new interface driver usbserial_generic
+usbserial: USB Serial support registered for generic
+usbcore: registered new interface driver cypress_m8
+usbserial: USB Serial support registered for DeLorme Earthmate USB
+usbserial: USB Serial support registered for HID->COM RS232 Adapter
+usbserial: USB Serial support registered for Nokia CA-42 V2 Adapter
+usbcore: registered new interface driver ftdi_sio
+usbserial: USB Serial support registered for FTDI USB Serial Device
+hidraw: raw HID events driver (C) Jiri Kosina
+usbcore: registered new interface driver usbhid
+usbhid: USB HID core driver
+GACT probability NOT on
+u32 classifier
+    Actions configured
+Netfilter messages via NETLINK v0.30.
+nf_conntrack version 0.5.0 (6740 buckets, 26960 max)
+ctnetlink v0.93: registering with nfnetlink.
+nf_conntrack_rtsp v0.7 loading
+nf_nat_rtsp v0.7 loading
+nf_tables: (c) 2007-2009 Patrick McHardy <kaber@trash.net>
+nf_tables_compat: (c) 2012 Pablo Neira Ayuso <pablo@netfilter.org>
+xt_time: kernel timezone is -0000
+ip_tables: (C) 2000-2006 Netfilter Core Team
+ipt_CLUSTERIP: ClusterIP Version 0.8 loaded successfully
+TCP: cubic registered
+Initializing XFRM netlink socket
+NET: Registered protocol family 10
+sit: IPv6 over IPv4 tunneling driver
+NET: Registered protocol family 17
+NET: Registered protocol family 15
+bridge: automatic filtering via arp/ip/ip6tables has been deprecated. Update your scripts to load br_netfilter if you need this.
+8021q: 802.1Q VLAN Support v1.8
+tc3162ser_startup 
+VFS: Mounted root (squashfs filesystem) readonly on device 31:3.
+Freeing unused kernel memory: 240K (805f4000 - 80630000)
+mknod: /dev/ppp: File exists
+mknod: /dev/ptmx: File exists
+mknod: /dev/ptyp0: File exists
+mknod: /dev/ptyp1: File exists
+mknod: /dev/ptyp2: File exists
+mknod: /dev/ttyp0: File exists
+mknod: /dev/ttyp1: File exists
+mknod: /dev/ttyp2: File exists
+mknod: /dev/watchdog: File exists
+mknod: /dev/ttyS20: File exists
+mknod: /dev/ttyS30: File exists
+mknod: /dev/hwnat0: File exists
+mknod: /dev/acl0: File exists
+mknod: /dev/ac0: File exists
+mknod: /dev/mtr0: File exists
+**************prepare var*****************
+busybox init and set aff
+
+init started: BusyBox v1.20.1 (2020-05-15 14:51:49 CST)
+chmod: /userfs/profile.cfg: Read-only file system
+TCSUPPORT_IPV6
+/dev created at preinit
+Reading MT7615 2.4G EEPROM from flash reservearea
+mtd[readflash]:device=reservearea tclen=1024 tcoffset=0
+Unlocking reservearea ...
+Reading from reservearea to /etc/RT30xxEEPROM.bin ... 
+Reading MT7615 5G EEPROM from flash reservearea
+mtd[readflash]:device=reservearea tclen=1024 tcoffset=131072
+Unlocking reservearea ...
+Reading from reservearea to /etc/Wireless/RT2860AP_AC/RT30xxEEPROM.bin ... 
+Reading MT7615 2.4G CALDATA from flash reservearea
+mtd[readflash]:device=reservearea tclen=36864 tcoffset=4096
+Unlocking reservearea ...
+Reading from reservearea to /etc/CALDATA_default.bin ... 
+Reading MT7615 5G CALDATA from flash reservearea
+mtd[readflash]:device=reservearea tclen=36864 tcoffset=135168
+Unlocking reservearea ...
+Reading from reservearea to /etc/Wireless/RT2860AP_AC/CALDATA_default.bin ... 
+insmod ETH_LAN driver
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+Exec. Successful
+install dmt for mt7510
+TCSUPPORT_WLAN
+TCSUPPORT_WLAN_MT7615
+TCSUPPORT_MAP_FILTER
+ifconfig: SIOCGIFFLAGS: No such device
+**************lan port init*****************
+four ports
+device eth0 is not a slave of br0
+taskset: invalid number '0x8'
+date: invalid date '010100002012'
+/etc/init.d/rcS: line 1457: /userfs/bin/wpa_supplicant: not found
+CO-FW parameter.......... PRODUCT_NAME_VOIP_CHECK=1
+MTK DSP support
+voip_loader start
+START CHECK ZARLIN ZSI
+[SLIC] le9642
+Loading le9642,slic num:1
+Loading common
+init mod-ksocket
+init mod-acodec
+init mod-foip3
+voip loader end
+taskset: invalid number '0x8'
+taskset: invalid number '0x8'
+taskset: invalid number '0x8'
+taskset: invalid number '0x8'
+taskset: invalid number '0x8'
+wan ether support
+TCSUPPORT_WLAN_SW_RPS
+VDSP_GetInstance:278
+/proc/net/skbmgr_4k_limit ???
+Jan  1 00:00:28 crond[433]: crond: crond (busybox 1.20.1) started, log level 8
+
+START disable Lan and Wan...
+ln: /dev/log: File exists
+1970-01-01 00:00:29 dnsmasq<454>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 23 bind server socket 3 on /var/lib/.sock/zcfg_sockaddr23 successfully
+
+dnsmasq: unknown user or group: root
+1970-01-01 00:00:29 zcmd<459>, zcmd.c:6172, main(), INFO: Start ZCMD daemon
+1970-01-01 00:00:29 zcmd<460>, uitimer.c:95, UITimerProc(), INFO: thread starts
+killall: zywifid_run.sh: no process killed
+zcfg_schema.bin
+killall: zywifid: no process killed
+1970-01-01 00:00:30 zywifid<474>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 40 bind server socket 3 on /var/lib/.sock/zcfg_sockaddr40 successfully
+*reg=0000001c value:68106810
+
+Load NComm TMS Module.
+zywifid> [ALERT] wifi_module_init:1082: load libzywl_001_ecn.so ..........
+Find MTD Device /dev/mtd1 with name romfile.
+mtd.oobsize 64 mtd.writesize 2048
+romfile type ffff
+romfile size 4294967295
+romfile crc 65535
+zywifid> [ALERT] main:1211: Check and fix Wifi MAC address......
+
+Please press Enter to activate this console. rm: can't remove '/tmp/wifiScanTime*': No such file or directory
+MAX Number of Interface Stack is 254
+Enter zcmdTr98MapTableInit
+zcmdTr98ParmAttrNodeBuild:
+zcmdTr98ParmAttrNodeBuild: obj 67176 3,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=1
+zcmdTr98ParmAttrNodeBuild: obj 67176 4,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=2
+zcmdTr98ParmAttrNodeBuild: obj 67176 5,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=3
+zcmdTr98ParmAttrNodeBuild: obj 67176 6,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=4
+zcmdTr98ParmAttrNodeBuild: obj 67176 7,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=5
+zcmdTr98ParmAttrNodeBuild: obj 67176 8,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=6
+zcmdTr98ParmAttrNodeBuild: obj 67176 9,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=7
+zcmdTr98ParmAttrNodeBuild: obj 67176 10,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=8
+zcmdTr98ParmAttrNodeBuild: obj 67176 11,1,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=9
+zcmdTr98ParmAttrNodeBuild: obj 64788 1,0,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=10
+zcmdTr98ParmAttrNodeBuild: obj 14568 0,0,0,0,0,0  nSetParmAttr 2
+setParmAttrNodeLst Add, n=11
+zcmdTr98ParmAttrNodeBuild: obj 16920 0,0,0,0,0,0  nSetParmAttr 1
+setParmAttrNodeLst Add, n=12
+zcmdTr98ParmAttrNodeBuild: obj 112704 0,0,0,0,0,0  nSetParmAttr 2
+setParmAttrNodeLst Add, n=13
+zcmdTr98ParmAttrNodeBuild: obj 87144 1,0,0,0,0,0  nSetParmAttr 3
+setParmAttrNodeLst Add, n=14
+mainDhcpPoolInfo[0]= 1 [1 0]
+mainDhcpPoolInfo[1]= 0 [0 0]
+mainDhcpPoolInfo[2]= 0 [0 0]
+mainDhcpPoolInfo[3]= 0 [0 0]
+mainDhcpPoolInfo[4]= 0 [0 0]
+mainDhcpPoolInfo[5]= 0 [0 0]
+mainDhcpPoolInfo[6]= 0 [0 0]
+mainDhcpPoolInfo[7]= 0 [0 0]
+mainDhcpPoolInfo[8]= 0 [0 0]
+mainDhcpPoolInfo[9]= 0 [0 0]
+mainDhcpPoolInfo[10]= 0 [0 0]
+mainDhcpPoolInfo[11]= 0 [0 0]
+mainDhcpPoolInfo[12]= 0 [0 0]
+mainDhcpPoolInfo[13]= 0 [0 0]
+mainDhcpPoolInfo[14]= 0 [0 0]
+mainDhcpPoolInfo[15]= 0 [0 0]
+zcmdTr98MapTableInit End
+1970-01-01 00:00:31 zcmd<459>, zcmd.c:6279, main(), INFO: tr98 map table inited
+zcmdReleaseTr98ObjParamMapping: no this object mapping
+zcmdReleaseTr98ObjParamMapping: object 86172 has mapping object
+zcmdReleaseTr98ObjParamMapping: object index attr
+zcmdReleaseTr98ObjParamMapping: object index 1
+zcmdReleaseTr98ObjParamMapping: Release object 86172 mapping with data
+zcmdTr98MappingGrpQry: obj 86172 1,0,0,0,0,0 queried group 0
+zcmdTr98MtRecognizeRDMappingOnRelease: objnum 86172, List obj 86172
+zcmdTr98MappingGrpQry: obj 87144 1,0,0,0,0,0 queried group 0
+zcmdTr98MtRecognizeRDMappingOnRelease: objnum 87144, List obj 87144
+setParmAttrNodeLst Delete, n=13
+=====zcmdTr98MtObjDelete=====seqnum=181
+=====zcmdTr181MtObjDelete=====oid=87144
+=====zcmdTr98MtObjDelete=====seqnum=180
+=====zcmdTr181MtObjDelete=====oid=86172
+1970-01-01 00:00:31 zcmd<459>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 1 bind server socket 4 on /var/lib/.sock/zcfg_sockaddr1 successfully
+1970-01-01 00:00:31 zcmd<501>, zcmd_config_apply.c:1557, zcmdModuleConfigHandleTask(), INFO: thread starts
+1970-01-01 00:00:31 zcmd<501>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 69 bind server socket 5 on /var/lib/.sock/zcfg_sockaddr69 successfully
+1970-01-01 00:00:31 zcmd<500>, zcmd_config_apply.c:1639, zcmdConfigApplyTask(), INFO: thread starts
+1970-01-01 00:00:31 zcmd<500>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 67 bind server socket 6 on /var/lib/.sock/zcfg_sockaddr67 successfully
+/bin/sh: dsldiagd: not found
+1970-01-01 00:00:31 esmd<511>, esmd.c:2126, main(), INFO: ESMD Start
+ESMD msg server init...
+1970-01-01 00:00:31 esmd<511>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 2 bind server socket 0 on /var/lib/.sock/zcfg_sockaddr2 successfully
+[ESMD] Initial kernel monitor ...
+kernelFd=7
+1970-01-01 00:00:31 zcmd<519>, zcmd.c:5637, zcmdActiveZtr69(), INFO: thread starts
+Find MTD Device /dev/mtd8 with name wwan.
+mtd.oobsize 64 mtd.writesize 2048
+[1;34mFW_WATCHER Start[0m
+Notice: zyUtilUpdateWWANPackage, No WWAN Package in Flash!
+wwanpackage info: revision is 1.18
+1970-01-01 00:00:31 esmd<526>, esmd.c:1992, timer_thread(), INFO: thread starts
+zyUtilTcpSvrInit
+1970-01-01 00:00:31 esmd<525>, esmd.c:1611, _esmd_thread(), INFO: ESMD ground thread starts
+1970-01-01 00:00:31 esmd<525>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 66 bind server socket 9 on /var/lib/.sock/zcfg_sockaddr66 successfully
+1970-01-01 00:00:31 esmd<524>, esmd.c:1603, _esmd_thread(), INFO: ESMD usr config thread starts
+zcmdBeInit(): DL opening...
+Initial begui_customization....
+Initial bedevice....
+Chain MACFILTER already exists.
+devObj->DeviceSummary = InternetGatewayDevice:1.4[](Baseline:1,EthernetLAN:2,WiFiLAN:1,ADSLWAN:1,ADSL2WAN:1,VDSL2WAN:1,PTMWAN:1,EthernetWAN:1,QoS:1,Time:1,IPPing:1),VoiceService:1[](Endpoint:1,SIPEndpoint:1,TAEndpoint:1)
+Initial bedsl....
+sh: you need to specify whom to kill
+Initial beatmlink....
+Initial beptmlink....
+Jan  1 00:00:33 crond[637]: crond: crond (busybox 1.20.1) started, log level 8
+
+Initial belog....
+killall: tty_log_echo: no process killed
+killall: mailsend: no process killed
+Set interval time = 60 second
+killall: syslog-ng: no process killed
+Error resolving user; user='root'
+Initial besysinfo....
+Initial beaccount....
+mkdir: can't create directory '/var/tmp': File exists
+chmod: /data/zcfg_predef.json: No such file or directory
+chmod: /data/zcfg_predef.json: No such file or directory
+Initial bedevinfo....
+1970-01-01 00:00:35 zcmd<518>, zcfg_msg.c:419, _msg_send(), ERROR: fail to sendto /var/lib/.sock/zcfg_sockaddr9, errno = 2(No such file or directory), srcEid = 1, dstEid = 9, type = 273 without reply, oid = 0
+1970-01-01 00:00:35 zcmd<518>, zcfg_msg.c:822, zcfg_msg_sendAndGetReply(), ERROR: fail to send message. ret = -5
+Initial beethlink....
+Initial beethintf....
+auto, Auto-negotiation enabled.
+No common media type was autonegotiated!
+This is extremely unusual and typically indicates a configuration error.
+Perhaps the advertised capability set was intentionally limited.
+Link is down
+auto, Auto-negotiation enabled.
+No common media type was autonegotiated!
+This is extremely unusual and typically indicates a configuration error.
+Perhaps the advertised capability set was intentionally limited.
+Link is down
+auto, Auto-negotiation enabled.
+No common media type was autonegotiated!
+This is extremely unusual and typically indicates a configuration error.
+Perhaps the advertised capability set was intentionally limited.
+Link is down
+auto, Auto-negotiation enabled.
+No common media type was autonegotiated!
+This is extremely unusual and typically indicates a configuration error.
+Perhaps the advertised capability set was intentionally limited.
+Link is down
+Initial bewifi_radio....
+Initial bewifi_ssid....
+Initial bewifi_ap....
+Initial bebridging....
+Initial bebridgingbr....
+Initial bebridgePort....
+device ra0 is not a slave of br0
+interface ra1 does not exist!
+device rai0 is not a slave of br0
+interface rai1 does not exist!
+interface rai3 does not exist!
+Initial bebridgeFilter....
+Initial bewifi....
+Initial beipiface....
+zywifid:Config> [ERROR] zyWifiUpdateLanInfo:404: No wifi interface on module(ECN).
+/bin/sh: zy1905App: not found
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcmdTr98SyncTr98WANConnectNum: obj 65676 seqnum 204
+zcfgBeWanInitIntfMark : Enter
+zcfgBeWanInitIntfMark: Init IfMark Done !!
+Initial benatIntf....
+modprobe: module nf_nat_ftp not found in modules.dep
+modprobe: module nf_conntrack_ftp not found in modules.dep
+modprobe: module nf_nat_ftp not found in modules.dep
+ftp switch turn on
+
+sip switch turn on
+
+modprobe: module nf_conntrack_rtsp not found in modules.dep
+rtsp switch turn on
+
+pptp switch turn on
+
+Initial bev4addr....
+Initial bev6addr....
+Initial bev6prefix....
+Initial beusbhost....
+Initial beusbintf....
+Initial beusbport....
+Initial berouter....
+Initial berainfo....
+Initial bedhcp4_server....
+Initial bedhcp4_serverpool....
+Initial bedhcp4_serverpool_staticaddr....
+Initial bedhcp4_serverpool_option....
+Initial bedhcp4_serversubnet....
+restart DNSMASQ...
+killall: dnsmasq: no process killed
+1970-01-01 00:01:11 dnsmasq<1222>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 23 bind server socket 9 on /var/lib/.sock/zcfg_sockaddr23 successfully
+Initial bedhcp4_relay....
+Initial bedhcp6_server....
+Initial bedhcp6_serverpool....
+Initial bevlanTerm....
+Initial bepppiface....
+zcmdTr98SyncTr98WANConnectNum: obj 63672 seqnum 218
+Initial bepppifaceipcp....
+Initial bedhcp4_client....
+Initial bedhcp6_client....
+1970-01-01 00:01:11 zcmd<518>, be_dhcp6_client_config_init.c:29, beConfigBoot(), INFO: boot Dhcp6 Client
+Initial beradvd....
+Initial bedns....
+Initial bedns_route....
+Initial bedns_server....
+zcmdTr98MtRecognizeRDMappingOnRelease: objnum 87708, List obj 87708
+zcmdTr98MtRecognizeRDMappingOnRelease: objnum 87708, List obj 87708
+zcmdTr98MtRecognizeRDMappingOnRelease: objnum 87708, List obj 87708
+Initial benat_port_map....
+Initial benat_port_trigger....
+Initial benat_addr_mapping....
+Initial begre_tunnel....
+modprobe ip_gre
+modprobe: module ip_gre not found in modules.dep
+Initial besessCtl....
+/bin/sh: can't create /proc/zy_nf_ct_udp_STB_port: nonexistent directory
+/bin/sh: can't create /proc/zy_nf_ct_udp_STB_timeout: nonexistent directory
+Initial befirewall....
+getL1InterfaceUpstream: 561 USB.Interface.1
+getL1InterfaceUpstream: 561 USB.Interface.1
+Initial betr69....
+Initial beddns....
+Initial betime....
+Initial bediagnostic....
+killall: tmsctl: no process killed
+Initial beschedule....
+Initial beparenCtl....
+Initial beqos....
+Initial beqosQueue....
+Initial beqosClass....
+Initial beqosShaper....
+Initial beqosPolicer....
+Initial be6rd....
+Initial beigmp....
+cp: can't stat '/etc/mcpd_igmp.conf': No such file or directory
+beigmp!
+/bin/sh: can't create /proc/zy_igmp_noipsrcaddr_enable: nonexistent directory
+restart DNSMASQ...
+[beIgmpCreateCfg](122) Failed.
+Initial besnmp....
+Boot SNMP
+Initial bemld....
+1970-01-01 00:01:13 dnsmasq<1314>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 23 bind server socket 9 on /var/lib/.sock/zcfg_sockaddr23 successfully
+cp: can't stat '/etc/mcpd_mld.conf': No such file or directory
+cat: can't open '/var/run/ecmh.pid': No such file or directory
+sh: you need to specify whom to kill
+Initial bevcAutoHunt....
+Initial bevlanAutoHunt....
+Initial beupnp....
+Initial bemacfilter....
+Initial bemacfilter_whitelist....
+Initial beuserinterface....
+Initial beremoMgmt....
+Initial bechangehosticon....
+Initial behosts....
+Initial behostshost....
+Initial becert....
+Initial beportmirror....
+Initial bedslite....
+Initial beSTBVendorID....
+Initial berip....
+killall: ripd: no process killed
+writing RSA key
+Initial betr64....
+Initial bewwanbackup....
+Initial besamba....
+Initial http with port(443), SSL enable.
+Initial http with port(80), SSL disable.
+1970-01-01 00:01:15 zhttpd<1347>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 15 bind server socket 58 on /var/lib/.sock/zcfg_sockaddr15 successfully
+wwanbackup info: WWANBACKUP start
+wwanbackup info: WWANBACKUP_DEBUG is 0
+starting smbd.
+samba start ok
+Initial bevoiceSrv....
+Initial bevoiceCap....
+Initial bevoiceCapSip....
+bePppIfaceSet: PPP.Interface.1
+bePppIfaceSet : Enable new or enable existing
+Initial bevoiceCapCodec....
+Initial bevoiceCommon....
+Initial bevoiceProf....
+Initial bevoiceProfSip....
+Initial bevoiceProfFaxT38....
+Initial bevoiceProfNumberingPlan....
+Initial bevoiceProfNumberingPlanPrefixInfo....
+Initial bevoiceProfRTP....
+Initial bevoiceProfRTPSRTP....
+Initial bevoiceLine....
+Initial bevoiceLineSip....
+Initial bevoiceLineProc....
+Initial bevoiceLineCallingFeatures....
+Initial bevoiceLineCodecList....
+Initial bevoiceLineStats....
+Initial bevoiceLineRinger....
+Initial bevoiceLineRingerDescription....
+Initial bevoicePhyIntf....
+Initial bevoiceSpeedDialBookList....
+Initial bevoiceCallPolicyBook....
+Initial bevoiceCallPolicyBookList....
+Initial bevoiceCallStatus....
+Initial bednsentry....
+Initial bezx....
+Initial bedlna....
+Initial bevlangroup....
+Initial beTFTPServerName....
+Initial bespeedtest....
+Initial beoneconnect....
+Initial beoneconnectPCRule....
+Initial bePwrMgmt....
+Initial bewifi_easymesh....
+Initial bewifi_onessid....
+[1;34mBack-end module init finished[0m
+[1;34mInitial USB driver...[0m
+turn on ztr69
+zcfgFeTr98QueryHandleRoutInit
+cwmp_get_acsInfo: reset redirect server
+1970-01-01 00:01:18 ztr69<1557>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 9 bind server socket 59 on /var/lib/.sock/zcfg_sockaddr9 successfully
+/bin/sh: /etc/init.d/mcpd.sh: not found
+START enable Lan and Wan...
+/bin/sh: /usr/sbin/zy1905: not found
+/bin/sh: /usr/sbin/zy1905Monitor: not found
+rm: can't remove '/tmp/app_sock': No such file or directory
+TR181 object IP.Interface.1
+writing RSA key
+bridge name br0
+Initial http with port(20443), SSL enable.
+database_init : /data/netprb_db_ver
+database_init : database_ver 18
+database_init : Create Device table
+database_init : Create Sub Interface table
+database_init : Create L2 Device Functions table
+arp_init     : arp_event->event_id 1
+layer2_init  : layer2_event->event_id 2
+oui_init     : oui_event->event_id 3
+ethlink_init : ethlink_event->event_id 4
+zy1905_init  : zy1905_event->event_id 5
+[/sbin/wwan-package-match.sh] VID 1d6b no match, exit
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:22 zupnp<1638>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 17, select() wait forever, EID = 1, type = 2 with reply, oid = 65676
+1970-01-01 00:01:22 esmd<524>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 2, select() wait forever, EID = 1, type = 1 with reply, oid = 38004
+[/sbin/wwan-package-match.sh] VID 1d6b no match, exit
+1970-01-01 00:01:23 zhttpd_rest<1628>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 77, select() wait forever, EID = 1, type = 2 with reply, oid = 114828
+1970-01-01 00:01:23 one_connect_monitor<1695>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 78, select() wait forever, EID = 1, type = 2 with reply, oid = 126708
+[/sbin/usb-hotplug.sh] add /var/usb/usb1
+1970-01-01 00:01:24 zupnp<1638>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 17, select() wait forever, EID = 1, type = 2 with reply, oid = 65676
+1970-01-01 00:01:24 esmd<524>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 2, select() wait forever, EID = 1, type = 1 with reply, oid = 38004
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:25 zhttpd_rest<1628>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 77, select() wait forever, EID = 1, type = 2 with reply, oid = 114828
+1970-01-01 00:01:25 one_connect_monitor<1695>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 78, select() wait forever, EID = 1, type = 2 with reply, oid = 126708
+1970-01-01 00:01:26 zupnp<1638>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 17, select() wait forever, EID = 1, type = 2 with reply, oid = 65676
+1970-01-01 00:01:26 esmd<524>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 2, select() wait forever, EID = 1, type = 1 with reply, oid = 38004
+1970-01-01 00:01:27 zhotplugd<1526>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 32, select() wait forever, EID = 1, type = 1 with reply, oid = 41016
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:27 zhttpd_rest<1628>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 77, select() wait forever, EID = 1, type = 2 with reply, oid = 114828
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:27 one_connect_monitor<1695>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 78, select() wait forever, EID = 1, type = 2 with reply, oid = 126708
+1970-01-01 00:01:28 zupnp<1638>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 17, select() wait forever, EID = 1, type = 2 with reply, oid = 65676
+1970-01-01 00:01:28 esmd<524>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 2, select() wait forever, EID = 1, type = 1 with reply, oid = 38004
+1970-01-01 00:01:29 zhotplugd<1526>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 32, select() wait forever, EID = 1, type = 1 with reply, oid = 41016
+1970-01-01 00:01:29 zhttpd_rest<1628>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 77, select() wait forever, EID = 1, type = 2 with reply, oid = 114828
+1970-01-01 00:01:29 one_connect_monitor<1695>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 78, select() wait forever, EID = 1, type = 2 with reply, oid = 126708
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:30 zupnp<1638>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 17, select() wait forever, EID = 1, type = 2 with reply, oid = 65676
+1970-01-01 00:01:30 esmd<524>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 2, select() wait forever, EID = 1, type = 1 with reply, oid = 38004
+1970-01-01 00:01:31 zhotplugd<1526>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 32, select() wait forever, EID = 1, type = 1 with reply, oid = 41016
+1970-01-01 00:01:31 zhttpd_rest<1628>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 77, select() wait forever, EID = 1, type = 2 with reply, oid = 114828
+1970-01-01 00:01:31 one_connect_monitor<1695>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 78, select() wait forever, EID = 1, type = 2 with reply, oid = 126708
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:32 zupnp<1638>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 17, select() wait forever, EID = 1, type = 2 with reply, oid = 65676
+1970-01-01 00:01:32 esmd<524>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 2, select() wait forever, EID = 1, type = 1 with reply, oid = 38004
+1970-01-01 00:01:33 zhotplugd<1526>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 32, select() wait forever, EID = 1, type = 1 with reply, oid = 41016
+1970-01-01 00:01:33 zhttpd_rest<1628>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 77, select() wait forever, EID = 1, type = 2 with reply, oid = 114828
+1970-01-01 00:01:33 one_connect_monitor<1695>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 78, select() wait forever, EID = 1, type = 2 with reply, oid = 126708
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:34 zupnp<1638>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 17, select() wait forever, EID = 1, type = 2 with reply, oid = 65676
+1970-01-01 00:01:34 esmd<524>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 2, select() wait forever, EID = 1, type = 1 with reply, oid = 38004
+1970-01-01 00:01:35 zhotplugd<1526>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 32, select() wait forever, EID = 1, type = 1 with reply, oid = 41016
+1970-01-01 00:01:35 zcmd<459>, zcmd.c:6410, main(), WARNING: process msg type = 2 with reply, oid = 65676, from EID = 17 by 14553 ms
+zyExtRemoteMgmtSrvObjGet : Enter
+l3fwdObjGet : Enter
+l3fwdGetDfGwByRtTable: enter, 4
+DeviceDiscRespPayload={
+   "ApiName": "ZYXEL RESTful API",
+   "ModelName": "VMG8825-T50",
+   "SoftwareVersion": "V5.50(ABPY.1)b11",
+   "DeviceMode": "Router",
+   "SupportedApiVersion": [
+     {
+       "ApiVersion": "1.0",
+       "LoginURI": "\/api\/v1\/UserLogin",
+       "Protocol": "HTTPS",
+       "HttpsPort": 20443
+     }
+   ],
+   "MAC": "08:26:97:xx:xx:xx"
+ }
+1970-01-01 00:01:35 zhttpd_rest<1628>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 77 bind server socket 13 on /var/lib/.sock/zcfg_sockaddr77 successfully
+hotplug:beUsbPortSet: USB Port Alias is cpe-
+hotplug:beUsbPortSet: USB Port Type is Device
+db_init() Open database: not an error
+APP Agent UDP socket ready!
+l3fwdGetDfGwByRtTable: ifname =  
+l3fwdGetDfGwByRtTable: No find default gateway interface!!
+Restarting ZyIMS VoIP
+
+ppe cmd done!
+
+ppe cmd done!
+[/sbin/wwan-package-match.sh] VID 1d6b no match, exit
+
+ppe cmd done!
+killall: voiceApp: no process killed
+
+ppe cmd done!
+killall: mm.exe: no process killed
+
+ppe cmd done!
+
+ppe cmd done!
+killall: icf.exe: no process killed
+
+ppe cmd done!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+
+ppe cmd done!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+done
+device ra0 is already a member of a bridge; can't enslave it to bridge br0.
+device ra1 is already a member of a bridge; can't enslave it to bridge br0.
+[/sbin/wwan-package-match.sh] VID 1d6b no match, exit
+bePtmLinkStatGet : Enter
+
+============================================================================
+UPnP Mapping table Dump:
+TR98 Object Name                                                            : UPnP service Id
+InternetGatewayDevice.Layer3Forwarding                                      : urn:upnp-org:serviceId:Layer3Forwarding.1
+============================================================================
+
+l3fwdObjGet : Enter
+l3fwdGetDfGwByRtTable: enter, 4
+/bin/sh: zy1905App: not found
+l3fwdGetDfGwByRtTable: ifname =  
+l3fwdGetDfGwByRtTable: No find default gateway interface!!
+[/sbin/usb-hotplug.sh] add /var/usb/usb2
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+[MM] main(): getpid = 1882
+AppRegisterSignal(): mm.exe pid = 1882
+UITimer_Init()...
+[MM]dspDriverDeinit(): DSP & Phone Port driver is already De-initialized ==> skip the action!!
+UITimerProc(): The UI Timer System (thread task: 'vo-USR-UItimer', pid=1882) is running...
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+AppRegisterSignal(): voiceApp pid = 1883
+UITimer_Init()...
+1970-01-01 00:01:39 voiceApp<1883>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 12 bind server socket 10 on /var/lib/.sock/zcfg_sockaddr12 successfully
+
+[1;36;44m### ZyIMS VoIP TR-104 Config Data Init Procedure Start ###[0m
+
+UITimerProc(): The UI Timer System (thread task: 'vo-USR-UItimer', pid=1883) is running...
+1970-01-01 00:01:40 zupnp<1638>, zcfg_msg.c:598, zcfg_msg_serverInit(), INFO: EID 17 bind server socket 14 on /var/lib/.sock/zcfg_sockaddr17 successfully
+main(): getpid = 1881
+
+[ENTERED]:ICF_ES
+
+INFO: AUTO_SCALE: 1 
+
+INFO: MODE_OF_OPERATION: 0 
+
+INFO: SIP_COMPACT_HDRS: NO 
+
+INFO: NW_TRACE_ENABLED: YES 
+INFO: ICF_DEF_SIP_SERVER_PORT: 6062 
+INFO: ICF_DEF_SIP_PROXY_PORT: 6061 
+INFO: TRANSPORT_MODE: 0 
+INFO: ICF_SYS_RESOURCE_LIMIT: 1 
+
+[ENTERING]:icf_es_init
+[ICF_ES]:PORT initalized succesfully
+icf_port_open_ipc_channel path = /var/iptk_es.chanl
+
+the open channel succeded 
+exit from the es init 
+icf_register_signal(): icf.exe pid = 1881
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:42 voiceApp<1883>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 12, select() wait forever, EID = 1, type = 1 with reply, oid = 468
+1970-01-01 00:01:42 esmd<524>, zcfg_msg.c:235, _msg_recv(), WARNING: EID = 2, select() wait forever, EID = 1, type = 1 with reply, oid = 61608
+1970-01-01 00:01:42 zcmd<459>, zcfg_msg.c:242, _msg_recv(), WARNING: EID = 1, select() wait for 2000 milli-seconds, EID = 12, type = 2004 with reply, oid = 0
+1970-01-01 00:01:42 zcmd<459>, zcfg_msg.c:844, zcfg_msg_sendAndGetReply(), ERROR: fail to receive message. ret = -1
+<<Error>> beVoiceCapConfigStatsUpdate() beVoiceSendMsgToZyIMSAndGetReply failed -5 use default list
+1970-01-01 00:01:42 zcmd<459>, zcmd.c:6410, main(), WARNING: process msg type = 1 with reply, oid = 468, from EID = 12 by 2031 ms
+hotplug:beUsbPortSet: USB Port Alias is cpe-
+hotplug:beUsbPortSet: USB Port Type is Device
+1970-01-01 00:01:42 esmd<524>, esmd.c:1565, processRequest(), WARNING: process msg type = 235 without reply, oid = 0, from EID = 1 by 24824 ms
+zcmd.c line 5582, zcmdReqProcess() : get ZCFG_MSG_INIT_DATAMODEL_FIN
+ECONET/zcmd_wrapper.c line 2046, zcmdEnableConfigSave() : enable tr98mapTableSaveFlag and configSaveFlag
+tr104ConvertPortsType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertDialingType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertDialToneType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertReceiveToneType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertCallerIDType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertCallerIDPayloadType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertTASType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertTASType(): <<Error>> INVALID parameter value : '' !!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+tr104ConvertPortsType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertDialingType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertDialToneType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertReceiveToneType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertCallerIDType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertCallerIDPayloadType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertTASType(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertTASType(): <<Error>> INVALID parameter value : '' !!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+tr104ConvertRegType(): <<Error>> INVALID parameter value : '' !!
+count =3 1=/userfs/bin/mapd_cli 2=/tmp/mapd_ctrl
+mapd_interface_ctrl_open failed
+Can't connect to /tmp/mapd_ctrl
+json_object_from_file: error opening file /tmp/dump.txt: No such file or directory
+[initALTable] second chance - dump information is not ready. 
+Update 1905 information Error!!
+tr104ConvertCWStatus(): <<Error>> INVALID parameter value : '' !!
+tr104ConvertRegType(): <<Error>> INVALID parameter value : '' !!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+tr104ConvertCWStatus(): <<Error>> INVALID parameter value : '' !!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+
+[1;36;44m### ZyIMS VoIP TR-104 Config Data Init Procedure Successfully Finished ###[0m
+
+MM:voiceDspCoreInit(): Entering...
+[MM]dspDriverInit(): Start to initialize the DSP (& Phone Port) driver by calling 'PhoneInit(countryCode=24)'...
+PhoneInit(): region: 'NLD'.
+Country Name:NLD
+result:9475208
+result:-9475208
+VDSP_GetInstance:278
+MM:voiceDspCoreInit(): after calling 'dsp_driver_itf.c/dspDriverGetInitData(initData@0x0, initDataLength=0)' to get the inited data of the MM part 'Endpoint_itf_mm.c/cmPhysEndpt[MAX_ENDPT]'...
+MM:voiceDspCoreInit(): after calling 'voiceEventIpcSendToVoiceApp()' to send the response message 'VOICE_DSP_INIT_RSP' back to [voiceApp]...
+MM:voiceDspCoreInit(): Exiting...with ret=1 & ret2=1 (MM_SUCCESS(1), MM_FAILURE(0))
+[Adam] Change log level to (EVA_LOG_ERR).
+[GDI] Change log level to (EVA_LOG_ERR).
+fxsPhoneIOP_hookFlashDetecTimerSet(): <<Error>>Invalid input timer value {flashTimerMin=0, flashTimerMax=0} for the FXS phone port index-0!! The valid condition is: both values should >= 0 except these two cases - (i)both values == 0, and (ii)(flashTimerMin >= flashTimerMax) while both values > 0!
+fxsPhoneIOP_hookFlashDetecTimerSet(): <<Error>>Invalid input timer value {flashTimerMin=0, flashTimerMax=0} for the FXS phone port index-1!! The valid condition is: both values should >= 0 except these two cases - (i)both values == 0, and (ii)(flashTimerMin >= flashTimerMax) while both values > 0!
+voiceDspInit(): <<Error>> The Phone (DSP Init) Data: LocationPtr=0x00000000, Size=-1!!
+DSP state is Inactive , so exit PhoneInitEventCb now
+DSP activated success
+taskCreate()...
+voiceDspInit(): Leaving with return 0...
+ phonePortVMWISet enters (for 'FXS' phone, phid=8 (8:All 'Ports' of the type), vmwiSigType=2 (1:SigOn,2:SigOff,0:SigNone))...
+in PhoneEventCb , the event 18 is not support ! 
+in PhoneEventCb , the event 18 is not support ! 
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+taskCreate()...
+flushVoipRoutePolicy(): cmd = iptables -t mangle -F IP_ROUTE2_VOIP
+
+[1;36;44m### ZyIMS VoIP Start-up Procedure Finished ###[0m
+
+zyRegionLListAdd(): <<WARN>> VoIP Country/Region Code 'MEX' is NOT supported, Skip it!!
+zyRegionLListAdd(): <<WARN>> VoIP Country/Region Code 'CYP' is NOT supported, Skip it!!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+1970-01-01 00:01:49 voiceApp<1883>, zcfg_msg.c:419, _msg_send(), ERROR: fail to sendto /var/lib/.sock/zcfg_sockaddr1-1573323, errno = 2(No such file or directory), srcEid = 12, dstEid = 1, type = 103 without reply, oid = 0
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+get_iface_ipv4_address(): <<Error>> ioctl socket 'SIOCGIFADDR' fail for ifName() ==> try to get IP address info by searching the 'iface_ipv4_address_list[]' array database alternatively!!
+get_iface_ipv4_address(): <<Error>> Can't find any matched ifName() even in the 'iface_ipv4_address_list[]' array database!!
+mmCfgSelfIp()/SipAcctId=0: <<Error>> calling 'get_iface_ipv4_address()' to get the IP Address FAIL for the interface pProf->ZyXEL_ActiveBoundIfName='' (where pProf->name='ChangeMe', ZyXEL_BoundIfName='Multi_WAN', ZyXEL_BoundIfList='IP.Interface.4,IP.Interface.7,IP.Interface.10', ZyXEL_BoundIpAddr='') ==> return FALSE now!!
+mmCfgOfRtpInfo()/SipAcctId=0: <<Error>> MM -> IPTK : 'mmCfgSelfIp(ICF_CFG_SET_SELF_IP_REQ)' FAILed ==> return FALSE now!!
+mmIptkCfgOfSipAccount(PID = 1883): <<Error>> 'mmCfgOfRtpInfo(sipAccountId=0)' FAIL ===> try to continue processing the next SIP Account!!
+get_iface_ipv4_address(): <<Error>> ioctl socket 'SIOCGIFADDR' fail for ifName() ==> try to get IP address info by searching the 'iface_ipv4_address_list[]' array database alternatively!!
+get_iface_ipv4_address(): <<Error>> Can't find any matched ifName() even in the 'iface_ipv4_address_list[]' array database!!
+mmCfgSelfIp()/SipAcctId=1: <<Error>> calling 'get_iface_ipv4_address()' to get the IP Address FAIL for the interface pProf->ZyXEL_ActiveBoundIfName='' (where pProf->name='ChangeMe', ZyXEL_BoundIfName='Multi_WAN', ZyXEL_BoundIfList='IP.Interface.4,IP.Interface.7,IP.Interface.10', ZyXEL_BoundIpAddr='') ==> return FALSE now!!
+mmCfgOfRtpInfo()/SipAcctId=1: <<Error>> MM -> IPTK : 'mmCfgSelfIp(ICF_CFG_SET_SELF_IP_REQ)' FAILed ==> return FALSE now!!
+mmIptkCfgOfSipAccount(PID = 1883): <<Error>> 'mmCfgOfRtpInfo(sipAccountId=1)' FAIL ===> try to continue processing the next SIP Account!!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+rm: can't remove '/tmp/app_sock': No such file or directory
+aging_en: 1, aging time: 5
+aging_unit: 0, aging_cnt: 4
+write reg: a0, value: 4000
+get_if_info for br0
+interface index is 19
+get_if_info OK
+Clean up temporary socket
+
+ppe cmd done!
+
+ppe cmd done!
+bind_arp: ifindex=19
+Binding to ifindex 19
+
+ppe cmd done!
+
+ppe cmd done!
+
+ppe cmd done!
+
+ppe cmd done!
+bind_arp: ifindex=16
+Binding to ifindex 16
+
+ppe cmd done!
+
+ppe cmd done!
+MAC: 0x7fa8dc2c, len = 6
+0x0000 : 08 26 97 da dd 81 
+bind_arp: ifindex=20
+Binding to ifindex 20
+done
+bind_arp: ifindex=21
+Binding to ifindex 21
+bind_arp: ifindex=22
+Binding to ifindex 22
+bind_arp: ifindex=17
+Binding to ifindex 17
+rai0      bbp:2308=303
+/bin/sh: can't create /proc/tc3162/lan_to_wifi_rps: nonexistent directory
+bind_arp: ifindex=28
+Binding to ifindex 28
+bind_arp: ifindex=29
+Binding to ifindex 29
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+bind_arp: ifindex=30
+Binding to ifindex 30
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+	 opClass = 81, chn_num = 13
+	 opClass = 83, chn_num = 9
+	 opClass = 84, chn_num = 9
+	 opClass = 81, chn_num = 13
+	 opClass = 83, chn_num = 9
+	 opClass = 84, chn_num = 9
+	 opClass = 81, chn_num = 13
+	 opClass = 83, chn_num = 9
+	 opClass = 84, chn_num = 9
+device rai0 is already a member of a bridge; can't enslave it to bridge br0.
+killall: p1905_managerd: no process killed
+	 opClass = 81, chn_num = 13
+	 opClass = 83, chn_num = 9
+	 opClass = 84, chn_num = 9
+device rai1 is already a member of a bridge; can't enslave it to bridge br0.
+	 opClass = 115, chn_num = 4
+	 opClass = 118, chn_num = 4
+	 opClass = 121, chn_num = 11
+	 opClass = 116, chn_num = 2
+	 opClass = 119, chn_num = 2
+	 opClass = 122, chn_num = 5
+	 opClass = 117, chn_num = 2
+	 opClass = 120, chn_num = 2
+	 opClass = 123, chn_num = 5
+	 opClass = 128, chn_num = 4
+	 opClass = 129, chn_num = 2
+	 opClass = 130, chn_num = 4
+	 opClass = 115, chn_num = 4
+	 opClass = 118, chn_num = 4
+	 opClass = 121, chn_num = 11
+	 opClass = 116, chn_num = 2
+	 opClass = 119, chn_num = 2
+	 opClass = 122, chn_num = 5
+	 opClass = 117, chn_num = 2
+	 opClass = 120, chn_num = 2
+	 opClass = 123, chn_num = 5
+	 opClass = 128, chn_num = 4
+	 opClass = 129, chn_num = 2
+	 opClass = 130, chn_num = 4
+	 opClass = 115, chn_num = 4
+	 opClass = 118, chn_num = 4
+	 opClass = 121, chn_num = 11
+	 opClass = 116, chn_num = 2
+	 opClass = 119, chn_num = 2
+	 opClass = 122, chn_num = 5
+	 opClass = 117, chn_num = 2
+	 opClass = 120, chn_num = 2
+	 opClass = 123, chn_num = 5
+	 opClass = 128, chn_num = 4
+	 opClass = 129, chn_num = 2
+	 opClass = 130, chn_num = 4
+device rai3 is already a member of a bridge; can't enslave it to bridge br0.
+	 opClass = 115, chn_num = 4
+	 opClass = 118, chn_num = 4
+	 opClass = 121, chn_num = 11
+	 opClass = 116, chn_num = 2
+	 opClass = 119, chn_num = 2
+	 opClass = 122, chn_num = 5
+	 opClass = 117, chn_num = 2
+	 opClass = 120, chn_num = 2
+	 opClass = 123, chn_num = 5
+	 opClass = 128, chn_num = 4
+	 opClass = 129, chn_num = 2
+	 opClass = 130, chn_num = 4
+[WAPP]map_send_wirelss_inf_info
+send info ra0, role: wiap, dev type = 1
+MAC Address = 08:26:97:xx:xx:xx
+send info ra1, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info ra2, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info ra3, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info rai0, role: wiap, dev type = 1
+MAC Address = 08:26:97:xx:xx:xx
+send info rai1, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info rai2, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info rai3, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+[1;32m  inf_count = 8 [0m
+[1;32m 0 name ra0 ch 2, phymode [N] role [wiap][0m
+[1;32m 1 name ra1 ch 2, phymode [N] role [wiap][0m
+[1;32m 2 name ra2 ch 2, phymode [N] role [wiap][0m
+[1;32m 3 name ra3 ch 2, phymode [N] role [wiap][0m
+[1;32m 4 name rai0 ch 52, phymode [AC] role [wiap][0m
+[1;32m 5 name rai1 ch 52, phymode [AC] role [wiap][0m
+[1;32m 6 name rai2 ch 52, phymode [AC] role [wiap][0m
+[1;32m 7 name rai3 ch 52, phymode [AC] role [wiap][0m
+route: SIOCADDRT: File exists
+killall: mapd: no process killed
+daemon mapd attached \x00/tmp/wapp_ctrl
+[1;32mctrler_found 
+[0m[WAPP]map_send_wirelss_inf_info
+send info ra0, role: wiap, dev type = 1
+MAC Address = 08:26:97:xx:xx:xx
+send info ra1, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info ra2, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info ra3, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info rai0, role: wiap, dev type = 1
+MAC Address = 08:26:97:xx:xx:xx
+send info rai1, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info rai2, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+send info rai3, role: wiap, dev type = 1
+MAC Address = 0a:26:97:xx:xx:xx
+Profile Count to host = 0
+rm: can't remove '/tmp/app_sock': No such file or directory
+bridge name br0
+database_init : /data/netprb_db_ver
+database_init : database_ver 18
+database_init : Create Device table
+database_init : Create Sub Interface table
+database_init : Create L2 Device Functions table
+arp_init     : arp_event->event_id 1
+layer2_init  : layer2_event->event_id 2
+oui_init     : oui_event->event_id 3
+ethlink_init : ethlink_event->event_id 4
+zy1905_init  : zy1905_event->event_id 5
+agentDataRecv: Start to receiving...
+0 ssid=TMNL-XXXXXX, autmode=0x0020, encryptype=0x0008, key=<redacted> bh_bss=0, fh_bss=1
+send BH config to ra0
+wapd sends WPAPSK = <redacted>
+send BH config to ra1
+wapd sends WPAPSK = <redacted>
+send BH config to ra2
+wapd sends WPAPSK = <redacted>
+send BH config to ra3
+wapd sends WPAPSK = <redacted>
+send BH config to rai0
+wapd sends WPAPSK = <redacted>
+send BH config to rai1
+wapd sends WPAPSK = <redacted>
+send BH config to rai2
+wapd sends WPAPSK = <redacted>
+send BH config to rai3
+wapd sends WPAPSK = <redacted>
+1 ssid=TMNL-XXXXXX_guest1, autmode=0x0020, encryptype=0x0008, key=<redacted> bh_bss=0, fh_bss=1
+send BH config to ra0
+wapd sends WPAPSK = <redacted>
+send BH config to ra1
+wapd sends WPAPSK = <redacted>
+send BH config to ra2
+wapd sends WPAPSK = <redacted>
+send BH config to ra3
+wapd sends WPAPSK = <redacted>
+send BH config to rai0
+wapd sends WPAPSK = <redacted>
+send BH config to rai1
+wapd sends WPAPSK = <redacted>
+send BH config to rai2
+wapd sends WPAPSK = <redacted>
+send BH config to rai3
+wapd sends WPAPSK = <redacted>
+2 ssid=TMNL-XXXXXX_guest2, autmode=0x0020, encryptype=0x0008, key=<redacted> bh_bss=0, fh_bss=1
+send BH config to ra0
+wapd sends WPAPSK = <redacted>
+send BH config to ra1
+wapd sends WPAPSK = <redacted>
+send BH config to ra2
+wapd sends WPAPSK = <redacted>
+send BH config to ra3
+wapd sends WPAPSK = <redacted>
+send BH config to rai0
+wapd sends WPAPSK = <redacted>
+send BH config to rai1
+wapd sends WPAPSK = <redacted>
+send BH config to rai2
+wapd sends WPAPSK = <redacted>
+send BH config to rai3
+wapd sends WPAPSK = <redacted>
+3 ssid=TMNL-XXXXXX_guest3, autmode=0x0020, encryptype=0x0008, key=<redacted> bh_bss=0, fh_bss=1
+send BH config to ra0
+wapd sends WPAPSK = <redacted>
+send BH config to ra1
+wapd sends WPAPSK = <redacted>
+send BH config to ra2
+wapd sends WPAPSK = <redacted>
+send BH config to ra3
+wapd sends WPAPSK = <redacted>
+send BH config to rai0
+wapd sends WPAPSK = <redacted>
+send BH config to rai1
+wapd sends WPAPSK = <redacted>
+send BH config to rai2
+wapd sends WPAPSK = <redacted>
+send BH config to rai3
+wapd sends WPAPSK = <redacted>
+1-iwpriv ra0 set AuthMode=WPA2PSK;
+/bin/sh: wifi_config_save: not found
+2-iwpriv ra0 set EncrypType=AES;
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+1-iwpriv ra1 set AuthMode=WPA2PSK;
+/bin/sh: wifi_config_save: not found
+2-iwpriv ra1 set EncrypType=AES;
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+1-iwpriv ra2 set AuthMode=WPA2PSK;
+/bin/sh: wifi_config_save: not found
+2-iwpriv ra2 set EncrypType=AES;
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+1-iwpriv ra3 set AuthMode=WPA2PSK;
+/bin/sh: wifi_config_save: not found
+2-iwpriv ra3 set EncrypType=AES;
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+0 ssid=TMNL-XXXXXX, autmode=0x0020, encryptype=0x0008, key=<redacted> bh_bss=0, fh_bss=1
+send BH config to ra0
+wapd sends WPAPSK = <redacted>
+send BH config to ra1
+wapd sends WPAPSK = <redacted>
+send BH config to ra2
+wapd sends WPAPSK = <redacted>
+send BH config to ra3
+wapd sends WPAPSK = <redacted>
+send BH config to rai0
+wapd sends WPAPSK = <redacted>
+send BH config to rai1
+wapd sends WPAPSK = <redacted>
+send BH config to rai2
+wapd sends WPAPSK = <redacted>
+send BH config to rai3
+wapd sends WPAPSK = <redacted>
+1 ssid=TMNL-XXXXXX_guest1, autmode=0x0020, encryptype=0x0008, key=<redacted> bh_bss=0, fh_bss=1
+send BH config to ra0
+wapd sends WPAPSK = <redacted>
+send BH config to ra1
+wapd sends WPAPSK = <redacted>
+send BH config to ra2
+wapd sends WPAPSK = <redacted>
+send BH config to ra3
+wapd sends WPAPSK = <redacted>
+send BH config to rai0
+wapd sends WPAPSK = <redacted>
+send BH config to rai1
+wapd sends WPAPSK = <redacted>
+send BH config to rai2
+wapd sends WPAPSK = <redacted>
+send BH config to rai3
+wapd sends WPAPSK = <redacted>
+2 ssid=TMNL-XXXXXX_guest2_5G, autmode=0x0020, encryptype=0x0008, key=<redacted> bh_bss=0, fh_bss=1
+send BH config to ra0
+wapd sends WPAPSK = <redacted>
+send BH config to ra1
+wapd sends WPAPSK = <redacted>
+send BH config to ra2
+wapd sends WPAPSK = <redacted>
+send BH config to ra3
+wapd sends WPAPSK = <redacted>
+send BH config to rai0
+wapd sends WPAPSK = <redacted>
+send BH config to rai1
+wapd sends WPAPSK = <redacted>
+send BH config to rai2
+wapd sends WPAPSK = <redacted>
+send BH config to rai3
+wapd sends WPAPSK = <redacted>
+3 ssid=29a022df555f3c37f84a367e153831c, autmode=0x0020, encryptype=0x0008, key=d46025d0ff175f7d55ae756de8952d5a bh_bss=1, fh_bss=0
+send BH config to ra0
+wapd sends WPAPSK = d46025d0ff175f7d55ae756de8952d5a
+send BH config to ra1
+wapd sends WPAPSK = d46025d0ff175f7d55ae756de8952d5a
+send BH config to ra2
+wapd sends WPAPSK = d46025d0ff175f7d55ae756de8952d5a
+send BH config to ra3
+wapd sends WPAPSK = d46025d0ff175f7d55ae756de8952d5a
+send BH config to rai0
+wapd sends WPAPSK = d46025d0ff175f7d55ae756de8952d5a
+send BH config to rai1
+wapd sends WPAPSK = d46025d0ff175f7d55ae756de8952d5a
+send BH config to rai2
+wapd sends WPAPSK = d46025d0ff175f7d55ae756de8952d5a
+send BH config to rai3
+wapd sends WPAPSK = d46025d0ff175f7d55ae756de8952d5a
+1-iwpriv rai0 set AuthMode=WPA2PSK;
+/bin/sh: wifi_config_save: not found
+2-iwpriv rai0 set EncrypType=AES;
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+1-iwpriv rai1 set AuthMode=WPA2PSK;
+/bin/sh: wifi_config_save: not found
+2-iwpriv rai1 set EncrypType=AES;
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+1-iwpriv rai2 set AuthMode=WPA2PSK;
+/bin/sh: wifi_config_save: not found
+2-iwpriv rai2 set EncrypType=AES;
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+1-iwpriv rai3 set AuthMode=WPA2PSK;
+/bin/sh: wifi_config_save: not found
+2-iwpriv rai3 set EncrypType=AES;
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+/bin/sh: wifi_config_save: not found
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+json_object_from_file: error opening file /tmp/zy1905.json: No such file or directory
+count =3 1=/userfs/bin/mapd_cli 2=/tmp/mapd_ctrl
+Succesfully opened connection to mapd
+zywifid> [ERROR] push_wifidReqProcess:590: Ignore request handler[ZCFG_MSG_WLAN_GET_CMD(4017)].
+Internal Error ~!
+count =3 1=/userfs/bin/mapd_cli 2=/tmp/mapd_ctrl
+Succesfully opened connection to mapd
+count =3 1=/userfs/bin/mapd_cli 2=/tmp/mapd_ctrl
+Succesfully opened connection to mapd
+count =3 1=/userfs/bin/mapd_cli 2=/tmp/mapd_ctrl
+Succesfully opened connection to mapd
+</nowiki>
+</WRAP>\\
+
+==== OpenWrt bootlog ====
+<WRAP bootlog>
+<nowiki>COPY HERE THE BOOTLOG ONCE OPENWRT IS INSTALLED AND RUNNING</nowiki>
+</WRAP>\\
+
+===== Notes =====
+
+===== Tags =====
+[[meta:tags|How to add tags]]
+{{tag>EN7516 2048NAND 512RAM unsupported ADSL2+ VDSL2 }}

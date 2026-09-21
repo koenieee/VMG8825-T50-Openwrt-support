@@ -54,3 +54,53 @@ Verify before flashing: `unsquashfs -d /tmp/check build_dir/.../root.squashfs li
 and `md5sum`/`strings` it against what you expect. Then flash with
 `dev_flash_cycle.py` as above.
 
+## `openwrt-overlay/` does NOT reach a build by itself
+
+`openwrt/` is a **git submodule with its own working copy**. `openwrt-overlay/`
+is the tracked source of truth, but nothing syncs it automatically — a file
+added under `openwrt-overlay/` is in *no* built image until it is copied into
+`openwrt/` — use `tools/sync-overlay.sh` for that. This has silently
+invalidated work that was committed and looked correct: two base-files
+scripts had never once run on hardware despite being in the repo.
+
+Second trap: target `base-files/` changes
+(`openwrt/target/linux/econet/base-files/`) are baked into the **base-files
+package**. `make package/install` alone will not pick them up:
+
+```
+make package/base-files/{clean,compile} -j$(nproc)   # required for base-files/ changes
+make package/install -j$(nproc)
+make target/install -j$(nproc)
+```
+
+Always confirm the file actually landed before booting:
+
+```
+ls -l openwrt/build_dir/target-mips_24kc_musl/root-econet/etc/init.d/<name> \
+      openwrt/build_dir/target-mips_24kc_musl/root-econet/etc/rc.d/S??<name>
+```
+
+## Out-of-tree `econet-eth` driver: patches only, never edit `build_dir`
+
+The driver source is fetched from `github.com/cjdelisle/econet_eth.git` by
+`package/kernel/econet-eth/Makefile`. Hand-edits to
+`build_dir/.../econet-eth-*/` are **wiped whenever the prepare step re-runs**,
+which happens on the next `compile` — the build will succeed and produce a
+module without your change. Durable changes must be numbered patches in
+`package/kernel/econet-eth/patches/`, installed into **both** `openwrt/` and
+`openwrt-overlay/`.
+
+Generate patches with `diff`, don't hand-write hunk headers (hand-written
+`@@` line counts fail with "malformed patch"):
+
+```
+cp econet_qdma.c /tmp/base.c          # from a freshly prepared tree
+# ...edit econet_qdma.c...
+diff -u --label a/econet_qdma.c --label b/econet_qdma.c /tmp/base.c econet_qdma.c > NNN-name.patch
+```
+
+For throughput/behaviour questions, a **temporary** `9NN-DEBUG-*.patch` adding
+`module_param_named()` counters is far cheaper than repeated boots: it makes
+both sides of an A/B comparison measurable within a single boot, at runtime.
+Delete it before committing. Verify it built with
+`strings <root-econet>/lib/modules/*/econet-eth.ko | grep <param>`.

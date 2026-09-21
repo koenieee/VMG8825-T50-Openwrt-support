@@ -13,7 +13,15 @@ console, and following `install-guide/README.md` step by step.
 - OpenWrt boots fully from MAIN (`tclinux`/mtd3): kernel + squashfs
   rootfs + a persistent UBIFS overlay on its own MTD partition, `procd`,
   root shell.
-- WiFi (MediaTek MT7615, dualband) — AP and client (STA) mode both work.
+- WiFi (MediaTek MT7615, two cards, dualband) — AP and client (STA)
+  mode both work, and the board splits the bands itself on first boot:
+  2.4 GHz on the TSSI-calibrated card at `1fb81000.pcie`, 5 GHz on the
+  external-PA card at `1fb83000.pcie`, both reaching 20 dBm. The binding
+  is by PCIe path, not radio index — the calibration follows the card
+  while the index follows probe order, and the other way round leaves
+  2.4 GHz clamped to 10 dBm by its own zeroed target-power byte.
+  Verified on a cold boot: both APs come up unattended, `phy0-ap0` on
+  2.4 GHz, `phy1-ap0` on channel 36.
   If your board's radio lacks factory calibration (no on-die eFuse data,
   no calibration in flash — a known issue on some MT7615E mPCIe cards
   without an onboard eeprom chip), a generic calibration blob is provided
@@ -49,6 +57,18 @@ console, and following `install-guide/README.md` step by step.
   `airoha_wdt` driver, and `procd` pets it, so a wedged kernel reboots on
   its own. Verified on hardware: the cdev is backed by platform device
   `1fbf0100.watchdog`.
+- Stable MAC address — taken from the bootloader's board-info block at
+  offset `0xff48` through an nvmem cell, so the board no longer comes up
+  under a random address and asks for a fresh DHCP lease on every boot.
+  `wan` gets the next address up. That block is the only copy on the
+  chip: `romfile`, `rom-d` and `reservearea` were read byte for byte and
+  carry no MAC anywhere.
+- `sysupgrade` — accepts the era-wrapped image (magic `2RDH`/`HDR2`,
+  header length `0x174`) and refuses anything else with a message,
+  rather than writing something zloader rejects at the next cold boot.
+  Upgrading no longer means the serial netboot-and-`nandwrite` ritual.
+  Proven on hardware: upgraded from a netbooted initramfs and rebooted
+  into the result.
 - USB storage — `kmod-usb-storage`/`block-mount`/ext4+vfat+nls kmods now
   ship in the default image (previously only worked via a manual
   `apk add` during testing).
@@ -107,29 +127,43 @@ checked, 42 agreeing with the hardware.
 
 ## Known limitations
 
-- **Resolved 2026-09-20:** the jack silkscreened "WAN" is switch port 4
-  (`lan4`), confirmed by a live cable-swap test — see "What works"
-  above and `NEXT_STEPS.md`'s Ethernet section for the full writeup.
-  The old `002-mt7530-embedded-phy-init.patch` switch-forwarding fix
-  (PCR matrix write for "port 4") is unreachable dead code under DSA;
-  it was chasing bugs on this same physical jack. `gmac1`/`eth1`
-  appears to be unused/dead hardware on this board.
-- LAN1/2 (switch ports 1, 2) haven't been individually
-  cable-tested since the DSA switch-over; `lan3` and `lan4` were both
-  confirmed with a cable on 2026-09-20. `ip link show` confirms all four
-  DSA netdevs exist. LAN throughput numbers below predate the DSA switch
-  and were measured against the old unmanaged-bridge driver — see
-  `NEXT_STEPS.md`.
-- Both WiFi radios default to 5 GHz; a board-specific uci-defaults
-  script now flips `radio1` to 2g on first boot for real dual-band
-  instead of two overlapping 5 GHz APs — untested on real hardware yet.
-- WiFi client (STA) mode was observed to wedge the radio's firmware
-  after sustained runtime (recurring firmware-timeout errors, recovered
-  by a reboot) — see `NEXT_STEPS.md` for the one occurrence recorded so
-  far; not yet characterized as reproducible or STA-specific.
+- **DSL does not work and is not being pursued.** ADSL2+/VDSL2 needs the
+  vendor's `mt7510` module; there is no mainline driver. Treat this as a
+  router with an ethernet WAN port, not as a modem.
+- **Both APs come up enabled on first boot, on the OpenWrt defaults** —
+  SSID `OpenWrt`, no encryption — deliberately, because a board whose
+  only other way in is a serial cable should not ship with no way in at
+  all. Set an SSID and a passphrase before putting it on a desk.
+- **TX checksum offload is off.** The descriptor bits
+  (`ETX_ICO`/`ETX_TCO`/`ETX_UCO`) are wired up, but every variant tried
+  stalls a TCP transfer after a few tens of kilobytes — the frames stop
+  arriving rather than arriving wrong, and the peer's `TcpInCsumErrors`
+  never moves. Only affects traffic terminating on the router; forwarded
+  traffic never reaches the CPU.
+- **Traffic to the router's own IP is much slower than through it.**
+  ~640 Mbit/s RX and ~270 Mbit/s TX at `-P4`, against 937 Mbit/s
+  forwarded. That is the nature of the hardware — the vendor firmware
+  does the same thing, and its own driver set gives it away (it ships a
+  software-RPS module only for WiFi↔LAN, the one path its hardware NAT
+  cannot offload).
+- **WiFi client (STA) mode wedged the radio's firmware once** under
+  sustained use: a command timeout ~13 minutes in, after which even
+  `ip link show` blocks. A reboot recovered it. This is the known
+  upstream `mt76`/mt7615 stability class of bug (openwrt/mt76#690,
+  openwrt/mt76#897), not something this port introduces — but it has not
+  been soak-tested either way.
+- `gmac1`/`eth1` reports a stale `carrier=1` and carries no traffic; it
+  is not wired to any socket on this board. The old
+  `002-mt7530-embedded-phy-init.patch` switch-forwarding fix is
+  unreachable dead code under DSA — it was chasing bugs on what turned
+  out to be a jack the switch already owned.
+- `dscp_byte_swap` for `en751627_soc_data` is copied from EN751221 and
+  unverified — only matters once QoS/DSCP marking is in play.
 - `dev_flash_cycle.py`'s MTD3 block range is hardcoded for this image's
   current size/layout; re-derive it (`ATSH`/`/proc/mtd`) if you change
   partition sizes or the image grows past the current boundary.
+- Nothing here is upstream. Everything lives in this repo as patches on
+  top of a submodule checkout; no part of it has been submitted.
 
 ## The bootloader's three gates
 
@@ -155,8 +189,21 @@ which then survives every following reboot until explicitly cleared:
 
 ## Development workflow
 
-`bldr-patch/dev_flash_cycle.py` is the iteration script for
-kernel/rootfs changes:
+Two helpers cover the normal loop once the board already runs OpenWrt:
+
+```
+tools/sync-overlay.sh          # push openwrt-overlay/ into the openwrt/ submodule
+                               # (or --pull edits back; non-zero exit on drift)
+tools/flash-openwrt.sh <host>  # wrap the built .trx into an era image, verify the
+                               # md5 across the wire and the board name, sysupgrade
+```
+`openwrt-overlay/` is the tracked source of truth but nothing syncs it
+automatically — a file added there reaches no built image until
+`sync-overlay.sh` has run.
+
+`bldr-patch/dev_flash_cycle.py` is the serial-console script, for when
+the board is not reachable over the network — bring-up, a bad flash, or
+a kernel change that does not boot:
 ```
 python3 bldr-patch/dev_flash_cycle.py --slim <fresh .trx>   # wrap, flash, boot-test
 python3 bldr-patch/dev_flash_cycle.py --era <already-wrapped .bin>
@@ -179,11 +226,11 @@ module for a different smart-plug API.
 | SoC | EcoNet **EN7516** (EN751627 family), MIPS **1004Kc**, 2x900 MHz, big-endian |
 | OpenWrt target | `econet` / subtarget **`en751627`** |
 | Tested against | OpenWrt `main` @ [`928cd26`](https://github.com/openwrt/openwrt/commit/928cd26bd938b8ac46b79e14f5f9f4b1d772abe8) (2026-09-17), kernel **6.18** — `openwrt/` is a submodule tracking `main`, which moves; `git checkout 928cd26` in `openwrt/` to reproduce the exact tested combination, or use it as a starting point and expect some drift on a newer checkout |
-| RAM | 512 MB DDR3 (devicetree maps 448 MB, untested — see `NEXT_STEPS.md`) |
+| RAM | 512 MB DDR3 (devicetree maps 448 MB; confirmed booting, `MemTotal: 443152 kB`) |
 | Flash | **SPI NAND** Winbond **W25M02GV**, 256 MiB, SLC, page 2048 / OOB 64 |
-| Switch/ethernet | Integrated in SoC, 1xWAN + 4xLAN gigabit — all via in-tree `mediatek,mt7530` DSA driver; WAN jack = `lan4`, confirmed on HW 2026-09-20 (1Gbps/Full, live traffic). `gmac1`/`eth1` (out-of-tree `econet-eth`) is unused dead hardware on this board |
+| Switch/ethernet | Integrated in SoC, 1xWAN + 4xLAN gigabit — all five via the in-tree `mediatek,mt7530` DSA driver, each socket confirmed with a cable and forwarding 937 Mbit/s through the PPE. `gmac1`/`eth1` (out-of-tree `econet-eth`) is unused dead hardware on this board |
 | WiFi | MediaTek **MT7615** (WiFi 5, dualband), PCIe, `mt76`/`kmod-mt7615e` |
-| DSL | ADSL2+/VDSL2 (vendor `mt7510` module) — no mainline driver, not pursued |
+| DSL | ADSL2+/VDSL2 (vendor `mt7510` module) — no mainline driver, not supported |
 | USB | 1x USB2.0 + 1x USB3.0, mass storage tested |
 | Serial console | 115200 8N1, CR-only, `/dev/ttyUSB0`, 3.3V header. No JTAG. |
 | Bootloader | Zyxel **zloader v1.4.4** (2021-01-04), legacy TRX+RSA, LZMA kernel |
@@ -233,37 +280,46 @@ full OpenWrt checkout:
    `vmg8825-t50-era-signed-locked.bin` (same build, but mtd1 is read-only
    at the kernel level and the flashing script is gone — reflash to this
    one once the bootloader patch is applied and verified; see
-   `install-guide/README.md` §7a). Wireless is disabled by default in the
-   OpenWrt image; no network name/passphrase is baked in.
+   `install-guide/README.md` §7a). All four were rebuilt 2026-09-21 from
+   the current tree. Both WiFi APs come up enabled on the OpenWrt
+   defaults (SSID `OpenWrt`, open) so the board is reachable without a
+   serial cable — set an SSID and a passphrase before using it; no
+   network name or passphrase is baked in.
 
 ## Roadmap / help wanted
 
-This port boots and runs, but is not "finished" — the following are the
-known gaps a contributor could pick up next, roughly in priority order:
+This port boots, routes at line rate and upgrades itself, but it is not
+"finished". Roughly in priority order, and all of it is work somebody
+with a T50 — or a sibling EN751627 board — can pick up:
 
-- **Per-port LAN1/2 cable verification.** DSA netdevs for all four
-  ports exist and `lan3`/`lan4` (the physical WAN jack) both passed real
-  traffic on 2026-09-20, but LAN1/2 haven't been individually
-  cable-tested since the switch to DSA.
-- **Verify the 448 MB RAM bump on real hardware** (up from 256 MB) —
-  untested, see `NEXT_STEPS.md`. Full 512 MB remains untried too.
-- **General stability soak-testing.** Nothing here has been run for
-  days under load; reboot loops, overlay-fs behavior under low disk,
-  and WiFi throughput/stability over time are all unverified.
-- **A second confirmed unit.** Everything here comes from one physical
-  board; the partition layout and bootloader banner match in theory
-  across the same firmware revision (see `install-guide/README.md`'s
-  precondition), but a second independent confirmation would harden
-  that assumption considerably.
+- **A second board.** Everything here comes from one unit. The port
+  order, the two MT7615 cards' calibration, the `0x1900` PHY calibration
+  value and the `0xff48` board-info MAC offset are all "true on this
+  board"; a second one either confirms them or finds the strap the
+  driver should be reading instead.
+- **General stability soak-testing.** Nothing has been run for days
+  under load. Reboot loops, overlay behaviour when the filesystem fills,
+  and WiFi throughput over time are all unverified.
+- **Soak-test WiFi client (STA) mode** and characterise the firmware
+  hang recorded under "Known limitations": is it always around 13
+  minutes, is it STA-specific, would a busy AP hit the same bug?
+- **TX checksum offload.** The scaffolding is in
+  `003-checksum-offload.patch` with the failed attempts recorded beside
+  it. The bit numbering is known good — `ETX_FPORT` lives in the same
+  word and works — so the question is what else the GDM wants set.
+- **Derive the flash block range at runtime** in `dev_flash_cycle.py`
+  from `/proc/mtd`/`ATSH` rather than the hardcoded constant, so a
+  larger image cannot write past its own partition.
+- **Upstreaming.** The five-user-ports DSA fix and the PPE work are
+  bugs and gaps in code that exists upstream; the big-endian MAC-mangle
+  defect in `nf_flow_table_offload` affects `mtk_eth_soc` identically
+  and has simply never been hit there. None of it has been submitted.
+- **DSL**, if anyone wants it. The vendor's `mt7510` module is the only
+  known route and nobody here has looked at it.
+- ~~Per-port cable verification.~~ Done — all five sockets tested
+  individually, which is how the labels were derived.
+- ~~Verify the 448 MB RAM bump on real hardware.~~ Done —
+  `MemTotal: 443152 kB`. The full 512 MB remains untried.
 - ~~A full, scrubbed boot log.~~ Done —
   `install-guide/example-boot-log.txt` has a full, redacted capture from
   ATGO through a working OpenWrt shell to compare your own boot against.
-
-Contributions on any of the above are welcome — open an issue or PR.
-
-## Sources
-
-- Wiki (specs): https://openwrt.org/inbox/toh/zyxel/zyxel_vmg8825-t50
-- econet target (base): https://github.com/openwrt/openwrt/tree/main/target/linux/econet
-- EN75xx platform PR: https://github.com/openwrt/openwrt/pull/19021
-- EcoNet Linux project: https://econet-linux.pkt.wiki/

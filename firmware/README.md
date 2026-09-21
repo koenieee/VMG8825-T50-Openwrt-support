@@ -8,13 +8,12 @@ only consistent when produced together; keeping a mismatched pair around
 is actively misleading). Build your own `.trx` from source if you want
 one — see below.
 
-> **All three of `era-signed.bin`, `era-signed-locked.bin` and
-> `initramfs-kernel.bin` were rebuilt 2026-09-21** with the five-port
-> switch fix and hardware flow offload on by default. `era-signed.bin` is
-> byte-identical to the image currently running on the author's router
-> (flashed to MAIN, read back and verified). The `-installer` variant is
-> still the 2026-09-20 build and does not carry these changes.
-> See the performance section of the top-level `README.md`.
+> **All four images were rebuilt 2026-09-21** from the current tree:
+> the fifth socket and the port names, hardware flow offload on by
+> default, the factory MAC from the bootloader's board-info block,
+> `sysupgrade`, the watchdog and the WiFi band split. The `-installer`
+> variant is no longer a build behind. See the performance section of
+> the top-level `README.md`.
 
 - `vmg8825-t50-bootloader-patched.bin` — the patched zloader bootloader
   (mtd0): RSA-signature and CRC boot-time checks disabled, see
@@ -27,7 +26,7 @@ one — see below.
   for what that means and the alternative of patching your own dump.
 - `vmg8825-t50-era-signed.bin` — the OpenWrt build, wrapped in the
   era-0x174 header this board's zloader expects, ready to flash to MAIN.
-  **Rebuilt 2026-09-20** with LuCI, SFTP (`openssh-sftp-server`), USB
+  **Rebuilt 2026-09-21** with LuCI, SFTP (`openssh-sftp-server`), USB
   storage (`kmod-usb-storage`/`block-mount`/ext4+vfat+nls), `base64`,
   and the 448 MB RAM devicetree mapping now included by default. This
   exact header wrapping wasn't itself re-flashed this round, but its
@@ -40,9 +39,10 @@ one — see below.
   last fix was never re-tested after flashing (see `NEXT_STEPS.md`'s
   Ethernet section) — whether this exact file was built before or after
   that fix is not tracked; rebuild fresh (below) if you specifically
-  need to test WAN. WiFi is disabled by default (see
-  `install-guide/README.md` §5) — no network name or passphrase is
-  baked into this image.
+  need to test WAN. Both WiFi APs come up enabled on the
+  OpenWrt defaults (SSID `OpenWrt`, no encryption) so the board is
+  reachable without a serial cable — set an SSID and a passphrase before
+  using it. No network name or passphrase is baked into the image.
 - `vmg8825-t50-era-signed-installer.bin` — byte-identical to
   `era-signed.bin` above, except `/root/` also ships
   `vmg8825-t50-bootloader-patched.bin` and `flash-patched-bootloader.sh`
@@ -53,7 +53,7 @@ one — see below.
   mtd1, same backup/confirm/verify safety checks, plus a `/proc/mtd`
   partition-name/size check before it touches anything. Flashing the
   bootloader is still an explicit, optional choice either way — nothing
-  in this image touches mtd0/mtd1 on its own. **Rebuilt 2026-09-20**
+  in this image touches mtd0/mtd1 on its own. **Rebuilt 2026-09-21**
   alongside `era-signed.bin` (same rootfs/package set, same caveat: this
   specific installer wrapping wasn't itself re-flashed this round — see
   above). Confirmed present with matching md5 and `mtdinfo /dev/mtd1`
@@ -68,7 +68,7 @@ one — see below.
 - `vmg8825-t50-initramfs-kernel.bin` — a full OpenWrt kernel+rootfs that
   boots straight from RAM via `bldr-patch/netboot.py`, no flash writes
   at all. See `install-guide/README.md` §2b. Useful for trying WiFi/LAN/
-  USB before deciding whether to flash anything. **Rebuilt 2026-09-20**
+  USB before deciding whether to flash anything. **Rebuilt 2026-09-21**
   with the same package/RAM changes as the images above; not
   independently netboot-tested this round.
 

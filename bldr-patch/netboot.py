@@ -31,6 +31,10 @@ SHELL_MARKER = b"root@OpenWrt:~#"
 if len(sys.argv) < 2:
     raise SystemExit(__doc__)
 KERNEL = sys.argv[1]
+# Per-character pacing for the UART. 10ms was conservative; at ~24 chars per
+# memwl line over 104 words it added ~25s on its own.
+CHAR_DELAY = float(os.environ.get("NETBOOT_CHAR_DELAY", "0.004"))
+
 MAX_WAIT = int(sys.argv[2]) if len(sys.argv) > 2 else 180
 STUB = os.path.join(HERE, "combined_kernel_stub.bin")
 
@@ -65,7 +69,7 @@ termios.tcflush(fd, termios.TCIOFLUSH)  # drop stale buffered bytes from prior s
 
 def send(s):
     for c in s.encode():
-        os.write(fd, bytes([c])); time.sleep(0.01)
+        os.write(fd, bytes([c])); time.sleep(CHAR_DELAY)
     os.write(fd, b"\r")
 
 def pump(t, tag="", keepalive_every=0, keepalive_bytes=b"\r", stop_marker=None):
@@ -154,10 +158,14 @@ if b"bldr>" not in b:
     die("did NOT see bldr> after ATGU", 6)
 
 print(ts(), "### memwl combined stub (%d words) to 0x%x (KSEG1)" % (len(stub_words), STUB_BASE))
+# Wait for the bldr> prompt rather than a fixed delay per word. At 1.3s x 104
+# words that was 135s of the ~241s netboot spent doing nothing; the prompt
+# normally comes back in well under 100ms. The 1.3s stays as the ceiling, so a
+# slow reply still works -- it is a timeout now, not a sleep.
 for i, w in enumerate(stub_words):
     addr = STUB_BASE + i * 4
     send("memwl %x %x" % (addr, w))
-    pump(1.3, "memwl-%d" % i)
+    pump(1.3, "memwl-%d" % i, stop_marker=b"bldr>")
 
 print(ts(), "### JUMP %x  <<<<< SINGLE-SHOT: COPY + INVALIDATE + JUMP INTO KERNEL >>>>>" % STUB_BASE)
 send("jump %x" % STUB_BASE)

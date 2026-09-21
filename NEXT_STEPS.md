@@ -70,8 +70,18 @@ DSA netdevs present (`ip link show`), devicetree shows `ethernet@
 1fb50000` `reg` size `0x8000` and `ethernet-switch@1fb58000` present
 (confirms the real DSA-split image booted, not an old-firmware
 fallback). `lan3` (cable connected) negotiated 1Gbps/Full,
-`carrier=1`, live non-zero RX/TX counters through `br-lan`. LAN1/2/4
-were not individually cable-tested this round.
+`carrier=1`, live non-zero RX/TX counters through `br-lan`.
+
+**Update 2026-09-21:** every socket has since been tested individually
+with a cable, and a fifth appeared. Switch port 0 — the socket nearest
+the USB connector — was missing from both the devicetree and the driver,
+so it reached no interface at all; EN751627 was borrowing EN7528's
+port-capability table, which starts at port 1, and phylink rejected the
+port outright with `empty supported_interfaces`. With port 0 added, the
+sockets run in physical order 0..4 while the case counts the LAN jacks
+the other way, so the interfaces were renamed to match the silkscreen:
+`lan4` `lan3` `lan2` `lan1` from the USB end, then `wan` on the blue
+jack. Each of the five forwards 937 Mbit/s through the PPE.
 
 **Resolved (2026-09-20, cable-swap tested):** the driver's runtime
 `has_switch_regs` flag (`resource_size(reg) >= sizeof(struct
@@ -87,7 +97,9 @@ RX/TX counters in `/proc/net/dev`. `eth1` (`gmac1`) showed no traffic
 at all despite `carrier` sysfs reporting `1` (stale/default state, not
 a real managed link — consistent with `gmac1`'s external PHY never
 being initialized in software). **Conclusion: the port silkscreened
-"WAN" is switch port 4 (`lan4`), not a separate `gmac1` uplink.** The
+"WAN" is switch port 4, not a separate `gmac1` uplink.** (It was called
+`lan4` at the time of this test; the ports were renamed on 09-21 once
+port 0 was found, and switch port 4 is now simply `wan`.) The
 WAN debugging history below and its `002-...patch` fixes were chasing
 bugs on what is, physically, the same jack DSA now calls `lan4` —
 useful history, but the fixes themselves are superseded/unreachable
@@ -96,8 +108,8 @@ hardware on this board.
 
 ### WAN (`gmac1`/ETHWAN) — pre-DSA debugging history (now dead code, see above)
 
-- **Resolved 2026-09-20: the WAN jack is `lan4`, not `gmac1`/`eth1` —
-  see the cable-swap test above.** LAN4/WAN now works via DSA the same
+- **Resolved 2026-09-20: the WAN jack is switch port 4, not
+  `gmac1`/`eth1` — see the cable-swap test above.** LAN4/WAN now works via DSA the same
   way LAN1-3 do (port 4 gets its forwarding/PCR setup from the in-tree
   `mt7530` driver, not from the dead-code fixes below), confirmed with
   a live 1Gbps link and real traffic. The `002-...patch` fixes below
@@ -365,6 +377,46 @@ heavy traffic on that radio at the time) — needs a longer, deliberate
 soak test to characterize (does it always happen around ~13 minutes?
 Is it STA-mode specific, or would a busy AP-mode radio hit the same
 firmware bug?) rather than a real fix yet.
+
+## MAC address
+
+The board has exactly one copy of its factory MAC, in the bootloader's
+board-info block at offset `0xff48` — the same block that carries the
+model string and the serial number. `romfile`, `rom-d` and
+`reservearea` were read byte for byte and carry no MAC anywhere. Before
+this was found the ethernet driver fell back to `eth_hw_addr_random()`,
+so the router turned up under a different address on every boot and
+asked for a fresh DHCP lease each time. `gmac0` now takes the address
+through an nvmem cell and `board.d` hands `wan` the next one up.
+
+## sysupgrade
+
+`platform.sh` had no case for this board, so upgrading meant the whole
+serial netboot-and-`nandwrite` ritual. It now accepts the era-wrapped
+image (magic `2RDH`/`HDR2`, header length `0x174`) and refuses anything
+else with a message rather than writing something the bootloader will
+reject at the next cold boot and leave to a serial cable.
+
+This needed the `tclinux` partition writable. It had been marked
+read-only from when there was no upgrade path and no sanctioned write,
+which only meant every flash needed a throwaway build with the flag
+taken back out. Nothing writes there at runtime either way — the
+overlay is a separate UBI volume on `rootfs_data`.
+
+Proven on hardware: upgraded from a netbooted initramfs, rebooted into
+the result.
+
+## Watchdog
+
+EN751627 carries the same watchdog block as the EN7581 — timer3 of the
+legacy timer unit at `0x1fbf0100` — but the in-tree driver was gated on
+`ARCH_AIROHA`, which only covers the ARM64 side of the family. The
+Kconfig dependency is widened to `ECONET` (patch 917) rather than
+duplicating the driver, with the DT node added and
+`AIROHA_WATCHDOG`/`WATCHDOG_CORE` enabled. Verified on hardware:
+`/dev/watchdog0` is backed by platform device `1fbf0100.watchdog`, so
+the driver bound at the inferred base — measured, not guessed — and
+procd's watchdogd is petting it. No extra package needed.
 
 ## Dev loop
 

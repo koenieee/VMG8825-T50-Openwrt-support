@@ -1,9 +1,10 @@
 # Installing OpenWrt on the Zyxel VMG8825-T50
 
-This installs a patched bootloader (RSA-signature and CRC checks
-disabled) plus a prebuilt OpenWrt image. This is not an OpenWrt-upstream
-install path — the T50 has no signed/official firmware route, no web-UI
-upload, and no Firmware Selector. Expect soldering and a serial console.
+This installs a bootloader you patch yourself (RSA-signature and CRC
+checks disabled — see §5a) plus a prebuilt OpenWrt image. This is not an
+OpenWrt-upstream install path — the T50 has no signed/official firmware
+route, no web-UI upload, and no Firmware Selector. Expect soldering and a
+serial console.
 
 This is the one tutorial for everyone: whether you're comfortable driving
 things with a script or would rather type every command by hand and see
@@ -29,14 +30,17 @@ boots the OEM slave, not your image, and stays that way across reboots
 (see `BOOTLOADER-PATCH.md`). You cannot "flash OpenWrt to MAIN and boot
 it" on a stock bootloader.
 
-The only thing that removes those gates is the **patched bootloader**.
-So the real order is:
+The only thing that removes those gates is a **patched bootloader**. You
+build this patch yourself, against your own bootloader dump (§5a) — this
+project ships no prebuilt bootloader binary. So the real order is:
 
 1. Get a root shell **without booting from flash at all** — netboot an
    initramfs kernel straight into RAM (§4). RAM boot bypasses the gates.
-2. From that RAM shell, flash OpenWrt to MAIN (safe) and the patched
-   bootloader to mtd1 (removes the gates) (§6, §7).
-3. Reboot into the now-patched bootloader, which boots MAIN cleanly (§8).
+2. From that RAM shell, back up flash and build your own patched
+   bootloader from the backup (§5, §5a).
+3. Flash OpenWrt to MAIN (safe) and your patched bootloader to mtd1
+   (removes the gates) (§6, §7).
+4. Reboot into the now-patched bootloader, which boots MAIN cleanly (§8).
 
 Both flash writes happen from the same gate-free RAM shell, so you never
 depend on an unsigned image booting from flash. §8 also covers clearing a
@@ -66,18 +70,20 @@ boot flag that latched during earlier experiments.
 
 ## Precondition — check this first
 
-This guide, and the prebuilt `firmware/vmg8825-t50-bootloader-patched.bin`,
-only apply to a device whose bootloader banner reads **exactly**:
+This guide only applies to a device whose bootloader banner reads
+**exactly**:
 ```
 EN751627 at Mon Jan 4 14:53:36 CST 2021 version 1.1 free bootbase
 ...
 ZyXEL zloader v1.4.4 (01/04/2021 - 14:53:34)
 ```
 Get to this banner via the serial console (see §2). **If your banner
-differs in any way, stop** — the prebuilt patched bootloader is a
-byte-for-byte binary for this exact zloader build and will not work (and
-may not be safe to flash) on a different one. Reproducing the patch for a
-different version is not covered by this guide.
+differs in any way, stop** — the two code offsets §5a's patch scripts
+use are byte-for-byte specific to this exact zloader build and asserting
+against them on a different one will fail loudly (which is the point —
+see `BOOTLOADER-PATCH.md`) rather than silently corrupt the wrong
+location. Reproducing the patch for a different version is not covered
+by this guide.
 
 ## Before you start
 
@@ -119,12 +125,11 @@ Software (Linux assumed below; on Windows, do this inside WSL):
     changed kernel config — see §4a.)
   - `firmware/vmg8825-t50-era-signed.bin` — the OpenWrt build for MAIN
     (mtd3). WiFi ships disabled; no SSID/passphrase baked in.
-  - `firmware/vmg8825-t50-bootloader-patched.bin` — the patched
-    bootloader (mtd1).
-  - Optional: `firmware/vmg8825-t50-era-signed-installer.bin` instead of
-    the plain `era-signed.bin` in §6 — same build, but ships the patched
-    bootloader and a flashing script at `/root/`, so §7 becomes "run the
-    script" instead of typing the commands by hand. See `firmware/README.md`.
+  - `bldr-patch/patch_stage2_rsa_bypass.py` and
+    `bldr-patch/patch_stage2_crc_bypass.py` — the two scripts that turn a
+    dump of **your own** mtd0/bootloader partition into the patched
+    bootloader you flash in §7. This project ships no prebuilt bootloader
+    binary — see §5a for why and how.
 
 ## 2. Wire up serial and confirm the console
 
@@ -269,6 +274,34 @@ md5sum /mnt/mtd-bootloader-backup.bin
 Copy these off the device onto your PC before continuing. They are the
 only recovery path if a write lands in the wrong place.
 
+## 5a. Build your own patched bootloader
+
+This project ships no prebuilt bootloader binary — you build one now,
+from the `mtd-bootloader-backup.bin` you just dumped in §5. This keeps
+your unit's own board-info block (MAC, serial, a couple of unidentified
+codes — see `BOOTLOADER-PATCH.md`) completely untouched: the scripts
+below only ever rewrite two known code offsets, copying everything else
+through unmodified. Do this on your **PC**, not the router:
+
+```sh
+python3 bldr-patch/patch_stage2_rsa_bypass.py /path/to/mtd-bootloader-backup.bin
+python3 bldr-patch/patch_stage2_crc_bypass.py bldr-patch/mtd0-rsa-bypass-patched.bin
+```
+
+Each script hard-asserts the original bytes at its patch offset before
+writing anything and refuses to run (with a clear error) if they don't
+match — this is the check that catches a zloader banner that doesn't
+match the precondition above, rather than silently corrupting the wrong
+location. The second command's output,
+`bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin`, is the file you flash
+in §7 — copy it to the USB stick alongside the images from §1.
+
+Sanity-check it's still a full 256KB mtd0 image and not, say, an empty
+file from a failed run:
+```sh
+ls -l bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin   # expect 262144 bytes
+```
+
 ## 6. Flash OpenWrt to MAIN (mtd3) — safe, has a slave fallback
 
 Still in the RAM shell. Find the partition labelled `tclinux` in
@@ -293,17 +326,9 @@ untouched as long as you never wrote to it.
 
 This is the one write with **no recovery slot**. Do it from the same live
 RAM shell (so a bad write can still be fixed from the §5 backup without a
-reboot), last, and only after the §6 readback matched. A bad write here
-means desoldering the flash chip to fix it.
-
-> **Shortcut:** if you flashed `vmg8825-t50-era-signed-installer.bin` in
-> §6 instead of the plain image, the steps below are already scripted as
-> `/root/flash-patched-bootloader.sh` — it does the same backup/erase/
-> write/verify sequence plus a `/proc/mtd` partition check, and works from
-> that image's shell whether you're still in the §4 RAM boot or have
-> already rebooted into it normally. Read the manual steps below at least
-> once anyway so you know what the script is doing and how to recover by
-> hand if its verify step fails.
+reboot), last, and only after the §6 readback matched, and only with the
+file you built yourself in §5a. A bad write here means desoldering the
+flash chip to fix it.
 
 Do **not** try to do this from `ZHAL>` with `ATWF` instead of `nandwrite`
 below — proven on real hardware to skip the flash's error-correction
@@ -311,29 +336,23 @@ data entirely, which the boot chip checks strictly for this exact
 partition (see the appendix). It is not a shortcut, it's a guaranteed
 brick for this specific partition.
 
-1. Verify the file's md5 on the USB stick against your local copy.
+1. Verify the file's md5 on the USB stick against your local copy of
+   `bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin` (§5a).
 2. Write it to the partition labelled `bootloader`:
    ```
    flash_erase /dev/mtd1 0 0
-   nandwrite -p /dev/mtd1 /mnt/vmg8825-t50-bootloader-patched.bin
+   nandwrite -p /dev/mtd1 /mnt/mtd0-rsa-and-crc-bypass-patched.bin
    ```
 3. **Read back and compare md5** against the source. Do **not** reboot
    until it matches:
    ```
-   nanddump -f /mnt/bl-readback.bin -l $(stat -c%s /mnt/vmg8825-t50-bootloader-patched.bin) /dev/mtd1
-   md5sum /mnt/bl-readback.bin /mnt/vmg8825-t50-bootloader-patched.bin
+   nanddump -f /mnt/bl-readback.bin -l $(stat -c%s /mnt/mtd0-rsa-and-crc-bypass-patched.bin) /dev/mtd1
+   md5sum /mnt/bl-readback.bin /mnt/mtd0-rsa-and-crc-bypass-patched.bin
    ```
 4. If the readback does **not** match: do not reboot. Re-erase and
    restore mtd1 from `/mnt/mtd-bootloader-backup.bin` (§5) using the same
    `flash_erase`/`nandwrite`/readback sequence, then investigate before
    trying again.
-
-> The prebuilt patched bootloader replaces a small per-unit board-info
-> block (MAC/serial) with placeholders. Fine for most people. To keep
-> your own device's values, build your own patched file from your own
-> bootloader backup (§5) with `patch_stage2_rsa_bypass.py` then
-> `patch_stage2_crc_bypass.py`, and use that in place of the prebuilt one
-> here — same write/verify steps. See §11 and `BOOTLOADER-PATCH.md`.
 
 ## 7a. Lock mtd1 back down (recommended, do this once §7 is verified)
 
@@ -344,9 +363,7 @@ fallback slot: a stray `nandwrite`, bug, or compromised process could brick
 the device with no recovery but desoldering.
 
 The `zyxel_vmg8825-t50-locked` device build closes this off at the
-devicetree level (`read-only;` on the bootloader partition node) and its
-image doesn't ship the flashing binary/script from §6/§7 either, since
-they'd be useless with mtd1 read-only anyway:
+devicetree level (`read-only;` on the bootloader partition node):
 
 ```
 firmware/vmg8825-t50-era-signed-locked.bin
@@ -360,8 +377,8 @@ mtdinfo /dev/mtd1
 ```
 
 If you ever need to re-patch mtd1 again (a future patch update), go back
-to the base `zyxel_vmg8825-t50` device build — or its `-installer` image —
-for that one operation, then reflash `-locked` afterwards.
+to the base `zyxel_vmg8825-t50` device build for that one operation
+(§5a/§7 again), then reflash `-locked` afterwards.
 
 ## 8. Reboot, boot, and verify
 
@@ -465,18 +482,14 @@ fixed numbers.
 
 **One exception:** mtd0/mtd1 also holds a small per-unit board-info block
 (MAC, serial, a couple of unidentified codes) separate from the code
-patches. The prebuilt patched bootloader has this genericised; flashing
-it overwrites your unit's values with placeholders. To keep your own,
-patch your own bootloader backup yourself — see the note in §7 and
-`BOOTLOADER-PATCH.md`.
+patches. Because §5a always patches **your own** bootloader dump, this
+block is never touched — see `BOOTLOADER-PATCH.md`.
 
-This matters more than it used to: that block, at offset `0xff48` of the
-`bootloader` partition, is where OpenWrt now reads the ethernet MAC from.
-It is the only copy on the chip — `romfile`, `rom-d` and `reservearea`
-were read byte for byte and hold no MAC at all. Flash the prebuilt
-bootloader and your router comes up as `aa:bb:cc:dd:ee:10` instead of its
-own address. That is stable and works fine; it is just not yours, so do
-not put two of them on the same network.
+This matters more than it might seem: that block, at offset `0xff48` of
+the `bootloader` partition, is where OpenWrt now reads the ethernet MAC
+from. It is the only copy on the chip — `romfile`, `rom-d` and
+`reservearea` were read byte for byte and hold no MAC at all. Following
+§5a/§7 as written, your router comes up with its own real MAC, unchanged.
 
 ## 12. Upgrading later (`sysupgrade`)
 

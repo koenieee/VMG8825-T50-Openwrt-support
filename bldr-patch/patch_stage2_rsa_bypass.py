@@ -2,13 +2,26 @@
 """Patch the kernel/TRX RSA-SHA256 signature compare in the T50 zloader stage2
 to an unconditional pass, and repack it back into a full mtd0-sized image.
 
+Input: a raw 256KB dump of YOUR OWN device's mtd0/bootloader partition
+(see install-guide/README.md SS5a for how to take it). This project ships
+no prebuilt bootloader binary -- you always start from your own dump so
+your unit's own board-info block (MAC/serial) is preserved untouched.
+
 Does NOT touch any device. Writes a local patched .bin only.
 """
+import glob
+import os
 import lzma
 import sys
 
-SRC = "firmware/extracted/bootloader.bin"   # full 256KB mtd0 dump
-OUT = "bldr-patch/mtd0-rsa-bypass-patched.bin"
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+
+# Auto-pick the newest matching mtd0 dump as source unless a path is given
+# explicitly on the command line.
+_candidates = sorted(glob.glob(os.path.join(REPO, "t50-mtd0-dump-live-*.bin")))
+SRC = sys.argv[1] if len(sys.argv) > 1 else (_candidates[-1] if _candidates else None)
+OUT = os.path.join(HERE, "mtd0-rsa-bypass-patched.bin")
 
 STAGE2_OFF = 0x10000          # compressed stage2 start in mtd0
 STAGE2_COMP_LEN = 0x1f681 - 0x10000
@@ -19,8 +32,13 @@ PATCH_NEW = bytes.fromhex("10000121")    # beq zero,zero,... (unconditional)
 
 
 def main():
+    if not SRC:
+        sys.exit("no source mtd0 dump found -- dump your own mtd0/bootloader "
+                  "partition first (install-guide/README.md SS5a), or pass "
+                  "a path as an argument")
     d = bytearray(open(SRC, "rb").read())
     assert len(d) == 0x40000, f"unexpected mtd0 size {len(d):#x}"
+    print(f"source: {SRC}")
 
     comp_orig = bytes(d[STAGE2_OFF:STAGE2_OFF + STAGE2_COMP_LEN])
     dec = lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(comp_orig)

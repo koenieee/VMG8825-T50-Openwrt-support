@@ -273,15 +273,14 @@ full OpenWrt checkout:
 - `tools/atenv3/` — the supervisor-password derivation tool needed for
   the bootloader's `ATSE`/`ATEN` debug-unlock.
  - `firmware/` — the prebuilt artifacts you actually flash:
-   `vmg8825-t50-bootloader-patched.bin` (patched bootloader, mtd1),
-   `vmg8825-t50-era-signed.bin` (plain OpenWrt build, MAIN/mtd3),
-   `vmg8825-t50-era-signed-installer.bin` (same, plus the §7 bootloader
-   flashing script baked in — use this one first), and
+   `vmg8825-t50-era-signed.bin` (plain OpenWrt build, MAIN/mtd3) and
    `vmg8825-t50-era-signed-locked.bin` (same build, but mtd1 is read-only
-   at the kernel level and the flashing script is gone — reflash to this
-   one once the bootloader patch is applied and verified; see
-   `install-guide/README.md` §7a). All four were rebuilt 2026-09-21 from
-   the current tree. Both WiFi APs come up enabled on the OpenWrt
+   at the kernel level — reflash to this one once the bootloader patch
+   is applied and verified; see `install-guide/README.md` §7a). No
+   prebuilt bootloader binary ships here — you build your own from your
+   own device's bootloader dump (`install-guide/README.md` §5a,
+   `BOOTLOADER-PATCH.md`). Both images were rebuilt 2026-09-21 from the
+   current tree. Both WiFi APs come up enabled on the OpenWrt
    defaults (SSID `OpenWrt`, open) so the board is reachable without a
    serial cable — set an SSID and a passphrase before using it; no
    network name or passphrase is baked in.

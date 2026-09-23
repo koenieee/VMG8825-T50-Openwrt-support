@@ -122,8 +122,9 @@ only if you understand and accept the brick risk above.
 - `ZHAL>` reachable over serial (main guide §2), 115200 8N1, CR-only.
 - `tools/atenv3/atenv3_passwd` built (main guide §1).
 - `atftp` on the PC; PC on `192.168.1.0/24` (not `.1`).
-- `firmware/vmg8825-t50-bootloader-patched.bin` (or your own self-patched
-  bootloader — see main guide §11).
+- Your own patched bootloader, built from your own bootloader dump per
+  main guide §5a (`bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin`).
+  This project ships no prebuilt bootloader binary.
 - **A pristine backup of your own bootloader partition** (see step 1).
 
 ## Step 1 — make a pristine backup you can restore from
@@ -168,7 +169,7 @@ ZHAL> ATLD bl.bin
 ```
 Then on the PC (the router is the TFTP *server* here):
 ```
-atftp --put --local-file firmware/vmg8825-t50-bootloader-patched.bin \
+atftp --put --local-file bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin \
       --remote-file bl.bin 192.168.1.1
 ```
 Wait for the console to confirm the download. Note the RAM address the
@@ -194,8 +195,8 @@ ZHAL> ATWF 0x80020000,0x0,0x40000       # RAM -> flash offset 0x0, len 0x40000
 ```
 ZHAL> ATRF 0x0,0x40000
 ```
-Compare the readback against `firmware/vmg8825-t50-bootloader-patched.bin`
-byte-for-byte.
+Compare the readback against
+`bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin` byte-for-byte.
 
 - **If it does not match:** do **not** reboot. Reload the *pristine*
   backup from step 1 into RAM (`ATLD` + `atftp --put

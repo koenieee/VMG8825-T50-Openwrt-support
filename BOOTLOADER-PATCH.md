@@ -1,8 +1,10 @@
 # Bootloader patch: RSA + CRC gate bypass in zloader stage2 (mtd0)
 
-Technical reference for the patch shipped as
-`firmware/vmg8825-t50-bootloader-patched.bin`. For flashing instructions
-see `install-guide/README.md` §4.
+Technical reference for the two-instruction patch you apply to **your
+own** mtd0/bootloader dump with the scripts in `bldr-patch/`. This
+project does not ship a prebuilt patched bootloader binary — see "Why no
+prebuilt binary" below. For the step-by-step flashing procedure see
+`install-guide/README.md` §5a and §7.
 
 ## What the patch does
 
@@ -67,9 +69,10 @@ It's written from **inside an already-running OpenWrt session** with
 `flash_erase`/`nandwrite` (which handle ECC/OOB per NAND page correctly
 — more robust than the raw `ATWF` primitive used for mtd3), not via the
 bootloader's own flash commands. This requires the `bootloader` DTS
-partition node to not have `read-only;` (already the case in the
-prebuilt image in `firmware/`) so the MTD layer allows the write. See
-`install-guide/README.md` §4 for the exact steps and required backups.
+partition node to not have `read-only;` (the case on the base
+`zyxel_vmg8825-t50` build; only the `-locked` variant sets it) so the MTD
+layer allows the write. See `install-guide/README.md` §5a/§7 for the
+exact steps and required backups.
 
 This means installing the patched bootloader takes two steps (flash
 OpenWrt to MAIN first, boot it, then flash the bootloader from that
@@ -79,9 +82,32 @@ write to mtd0 may well work too — this project never attempted it,
 specifically because mtd0 has no fallback and `nandwrite`'s per-page
 ECC/OOB handling was judged the safer default for the one write that
 can't be undone. If you test the direct route yourself, do it with the
-same backup/verify discipline as `install-guide/README.md` §4.
+same backup/verify discipline as `install-guide/README.md` §5.
 
-## Per-unit board-info block: what the prebuilt binary does and doesn't preserve
+## Why no prebuilt bootloader binary
+
+Earlier revisions of this project shipped a prebuilt
+`vmg8825-t50-bootloader-patched.bin` with its per-unit board-info block
+(MAC/serial, see below) replaced by placeholders. That file — and the
+`-installer` firmware build that baked it in — have been removed,
+including from git history: distributing a patched bootloader binary
+that flashes over another unit's real board-info block on the
+highest-risk, no-fallback write in this project was the wrong trade-off.
+
+**You build your own patched bootloader from your own mtd0 dump.** It's
+two Python scripts run against a file you dump yourself (§5a of the
+install guide), and it means:
+
+- Your unit's own MAC/serial/board-info block is never touched — only
+  the two known code offsets are patched (see the per-unit section
+  below).
+- The scripts hard-assert the original bytes at each patch offset before
+  writing anything and refuse to run if they don't match, so a zloader
+  build that differs from the one this project targets (see the install
+  guide's precondition section) fails loudly instead of silently
+  corrupting the wrong location.
+
+## Per-unit board-info block
 
 Around offset `0xff00`-`0xffff` (in stage1, before the compressed stage2
 blob), mtd0 also holds a small board-info table — vendor/model strings
@@ -92,38 +118,31 @@ inside the compressed stage2 blob at `0x10000`-`0x1f681`) and from the
 partition table this project documents elsewhere (`romfile`/`reservearea`
 etc., which hold additional per-unit data of their own).
 
-`firmware/vmg8825-t50-bootloader-patched.bin` has this block's per-unit
-fields replaced with generic placeholders (same technique as the MAC
-placeholders in the devicetree) so the published file doesn't carry this
-project's own unit's real MAC/serial. Whether the zloader validates or
-checksums this block at boot (as opposed to just reporting it verbatim
-via `ATSH`) has **not been tested** — the placeholder values booted fine
-in this project's own testing, but that was on the unit whose real values
-were only just replaced, not on a different physical unit.
+Because you always patch your own dump (see above), this block is never
+touched by the process in this repo — `patch_stage2_rsa_bypass.py` and
+`patch_stage2_crc_bypass.py` only ever rewrite the two known code
+offsets inside the compressed stage2 blob, copying everything else
+(including this board-info block) through unmodified. Whether the
+zloader validates or checksums this block at boot at all (as opposed to
+just reporting it verbatim via `ATSH`) has not been tested — it's simply
+never touched here.
 
-Flashing this file onto your own device therefore overwrites your unit's
-real MAC/serial/codes in this block with the placeholders — cosmetic in
-the (untested) best case, unknown in the worst case. The higher-assurance
-alternative: dump your **own** mtd0, run `patch_stage2_rsa_bypass.py`
-then `patch_stage2_crc_bypass.py` against your own dump (see below), and
-flash the result instead. That only ever touches the two known code
-offsets and leaves your own board-info block completely untouched.
+## Building your own patched bootloader
 
-## Reproducing this patch for a different zloader build
+The build scripts, run against a raw dump of **your own** mtd0/bootloader
+partition (`install-guide/README.md` §5a):
 
-Out of scope for the install guide — only attempt this if your device's
-zloader banner does not match the one `firmware/vmg8825-t50-bootloader-patched.bin`
-targets (see `install-guide/README.md`'s precondition section). The build
-scripts:
-
-- `bldr-patch/patch_stage2_rsa_bypass.py` — applies the RSA patch to a
-  raw mtd0 dump.
-- `bldr-patch/patch_stage2_crc_bypass.py` — applies the CRC patch on
-  top of an already RSA-patched mtd0 dump.
+- `bldr-patch/patch_stage2_rsa_bypass.py <your-mtd0-dump.bin>` — applies
+  the RSA patch. Writes `bldr-patch/mtd0-rsa-bypass-patched.bin`.
+- `bldr-patch/patch_stage2_crc_bypass.py <rsa-patched-dump.bin>` —
+  applies the CRC patch on top. Writes
+  `bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin` — this is the file you
+  flash in §7.
 
 Both scripts hard-assert the original bytes at their patch offset before
 writing anything, and refuse to run if they don't match — so a different
 zloader build fails loudly instead of silently corrupting the wrong
 location. If that happens, the offsets in the table above do not apply
-to your build and finding the new ones requires disassembling your own
-dump; that process isn't documented here.
+to your build (see the precondition section in `install-guide/README.md`
+— this is out of scope for this guide) and finding the new ones requires
+disassembling your own dump; that process isn't documented here.

@@ -56,9 +56,10 @@ This box is only the outline, don't improvise from it alone.
 
   - Open the case, connect a 3.3V serial adapter, confirm the bootloader banner matches the guide's precondition section.
   - Netboot an initramfs kernel over TFTP to get a root shell without touching flash.
-  - Flash [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed-installer.bin|vmg8825-t50-era-signed-installer.bin]] to the main partition — the factory partition is an automatic fallback, this step is safe to retry.
-  - Flash the patched bootloader, [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-bootloader-patched.bin|vmg8825-t50-bootloader-patched.bin]] — **this one write has no fallback**, back up first.
-  - <color red>**Finish by reflashing**</color> [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed-locked.bin|vmg8825-t50-era-signed-locked.bin]] so the bootloader partition (mtd1) ends up **read-only** again — don't stay on the ''-installer'' image any longer than it takes to patch the bootloader.
+  - Back up flash, then build your own patched bootloader from your own bootloader dump — no prebuilt bootloader binary is shipped, see the guide's §5a.
+  - Flash [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed.bin|vmg8825-t50-era-signed.bin]] to the main partition — the factory partition is an automatic fallback, this step is safe to retry.
+  - Flash the bootloader you just built — **this one write has no fallback**, back up first.
+  - <color red>**Finish by reflashing**</color> [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed-locked.bin|vmg8825-t50-era-signed-locked.bin]] so the bootloader partition (mtd1) ends up **read-only** again.
 
 
 ==== Example boot log ====

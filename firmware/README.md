@@ -1,29 +1,22 @@
 # firmware/
 
-Prebuilt binaries: the current known-good build, its matching patched
-bootloader, and an alternate build with that bootloader (plus the script
-that flashes it) baked in. A pre-wrap `.trx` was removed from here because
-it was a stale, older build than the shipped `era-signed.bin` (the two are
-only consistent when produced together; keeping a mismatched pair around
-is actively misleading). Build your own `.trx` from source if you want
-one — see below.
+Prebuilt binaries: the current known-good OpenWrt build for MAIN, its
+locked-bootloader variant, and the RAM-boot kernel. This project ships
+**no prebuilt bootloader binary** — the patched bootloader (mtd0/mtd1)
+is built by each user from their own device's bootloader dump, so it
+never carries anyone else's board-info block (MAC/serial). See
+`BOOTLOADER-PATCH.md` and `install-guide/README.md` §5a. A pre-wrap
+`.trx` was removed from here because it was a stale, older build than
+the shipped `era-signed.bin` (the two are only consistent when produced
+together; keeping a mismatched pair around is actively misleading).
+Build your own `.trx` from source if you want one — see below.
 
-> **All four images were rebuilt 2026-09-21** from the current tree:
+> **All three images were rebuilt 2026-09-21** from the current tree:
 > the fifth socket and the port names, hardware flow offload on by
 > default, the factory MAC from the bootloader's board-info block,
-> `sysupgrade`, the watchdog and the WiFi band split. The `-installer`
-> variant is no longer a build behind. See the performance section of
-> the top-level `README.md`.
+> `sysupgrade`, the watchdog and the WiFi band split. See the
+> performance section of the top-level `README.md`.
 
-- `vmg8825-t50-bootloader-patched.bin` — the patched zloader bootloader
-  (mtd0): RSA-signature and CRC boot-time checks disabled, see
-  `BOOTLOADER-PATCH.md`. Only flash this if your device's zloader banner
-  matches exactly — see `install-guide/README.md`'s precondition section.
-  No fallback if this write goes wrong; the install guide's backup steps
-  are not optional. The per-unit board-info block mtd0 also carries
-  (MAC/serial/other codes, separate from the boot-check patches) has
-  been replaced with placeholders in this file — see `BOOTLOADER-PATCH.md`
-  for what that means and the alternative of patching your own dump.
 - `vmg8825-t50-era-signed.bin` — the OpenWrt build, wrapped in the
   era-0x174 header this board's zloader expects, ready to flash to MAIN.
   **Rebuilt 2026-09-21** with LuCI, SFTP (`openssh-sftp-server`), USB
@@ -43,22 +36,6 @@ one — see below.
   OpenWrt defaults (SSID `OpenWrt`, no encryption) so the board is
   reachable without a serial cable — set an SSID and a passphrase before
   using it. No network name or passphrase is baked into the image.
-- `vmg8825-t50-era-signed-installer.bin` — byte-identical to
-  `era-signed.bin` above, except `/root/` also ships
-  `vmg8825-t50-bootloader-patched.bin` and `flash-patched-bootloader.sh`
-  (source: `openwrt-overlay/files/root/`). Once you're at a shell on
-  this image (booted normally, or the §4 RAM shell), running that script
-  does §7's erase/write/verify for you instead of typing it by hand — same
-  underlying `flash_erase`/`nandwrite` steps, same no-fallback risk on
-  mtd1, same backup/confirm/verify safety checks, plus a `/proc/mtd`
-  partition-name/size check before it touches anything. Flashing the
-  bootloader is still an explicit, optional choice either way — nothing
-  in this image touches mtd0/mtd1 on its own. **Rebuilt 2026-09-21**
-  alongside `era-signed.bin` (same rootfs/package set, same caveat: this
-  specific installer wrapping wasn't itself re-flashed this round — see
-  above). Confirmed present with matching md5 and `mtdinfo /dev/mtd1`
-  writable=true as of the 2026-09-19 build; the actual bootloader flash
-  was deliberately not run during that or this test.
 - `vmg8825-t50-era-signed-locked.bin` — same rootfs/kernel as
   `era-signed.bin`, wrapped for the bootloader-locked (patched mtd0)
   boot path instead of plain MAIN. **Confirmed working on hardware**
@@ -98,11 +75,3 @@ from the shipped `era-signed.bin` above (upstream moves forward over
 time) — that's expected, not a sign anything is wrong. It has **not**
 been flashed/tested on real hardware; only the shipped `era-signed.bin`
 carries that confirmation.
-
-To reproduce the `-installer` variant instead of the plain one, also copy
-`openwrt-overlay/files/` into `openwrt/files/` before `make` — OpenWrt
-picks up `openwrt/files/` automatically and bakes its contents into the
-rootfs, no `.config` change needed:
-```sh
-cp -r openwrt-overlay/files openwrt/
-```

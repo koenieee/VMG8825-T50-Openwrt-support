@@ -37,14 +37,30 @@ def main():
                   "partition first (install-guide/README.md SS5a), or pass "
                   "a path as an argument")
     d = bytearray(open(SRC, "rb").read())
-    assert len(d) == 0x40000, f"unexpected mtd0 size {len(d):#x}"
+    if len(d) != 0x40000:
+        sys.exit(f"FATAL: {SRC} is {len(d):#x} bytes, expected exactly 0x40000 "
+                  "(256KB) -- this doesn't look like a full mtd0/bootloader "
+                  "dump. Re-dump per install-guide/README.md SS5.")
     print(f"source: {SRC}")
 
     comp_orig = bytes(d[STAGE2_OFF:STAGE2_OFF + STAGE2_COMP_LEN])
-    dec = lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(comp_orig)
+    try:
+        dec = lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(comp_orig)
+    except lzma.LZMAError as e:
+        sys.exit(f"FATAL: stage2 at offset {STAGE2_OFF:#x} is not valid LZMA "
+                  f"data ({e}). This usually means {SRC} is not a genuine, "
+                  "full 256KB mtd0/bootloader dump (wrong partition, "
+                  "truncated/partial dd, or a device whose bootloader banner "
+                  "does not match this guide's precondition) -- re-dump per "
+                  "install-guide/README.md SS5 and check the banner first.")
 
     off = dec.find(PATCH_ORIG, PATCH_OFF - 4, PATCH_OFF + 4)
-    assert off == PATCH_OFF, f"patch site moved, found at {off:#x} expected {PATCH_OFF:#x}"
+    if off != PATCH_OFF:
+        sys.exit(f"FATAL: patch site moved (found at {off:#x}, expected "
+                  f"{PATCH_OFF:#x}) -- {SRC} doesn't match the zloader build "
+                  "this guide targets. Check the bootloader banner "
+                  "(install-guide/README.md precondition section); a "
+                  "different build needs its own offsets, not covered here.")
 
     patched = bytearray(dec)
     patched[PATCH_OFF:PATCH_OFF + 4] = PATCH_NEW
@@ -62,7 +78,9 @@ def main():
         sys.exit("FATAL: recompressed stage2 does not fit before the trailer, abort")
 
     redec = lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(recomp)
-    assert redec == bytes(patched), "roundtrip mismatch, abort"
+    if redec != bytes(patched):
+        sys.exit("FATAL: internal roundtrip mismatch, abort (this indicates "
+                  "a bug in this script, not your input file -- please report it)")
 
     out = bytearray(d)
     out[STAGE2_OFF:STAGE2_OFF + STAGE2_COMP_LEN] = b"\x00" * STAGE2_COMP_LEN  # clear old region

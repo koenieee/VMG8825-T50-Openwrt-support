@@ -68,11 +68,21 @@ def main():
         sys.exit("no source mtd0 dump found -- dump your own mtd0 first, "
                   "or pass a path as an argument")
     d = bytearray(open(SRC, "rb").read())
-    assert len(d) == 0x40000, f"unexpected mtd0 size {len(d):#x}"
+    if len(d) != 0x40000:
+        sys.exit(f"FATAL: {SRC} is {len(d):#x} bytes, expected exactly 0x40000 "
+                  "(256KB) -- this doesn't look like a full mtd0/bootloader "
+                  "dump. Re-dump per install-guide/README.md SS5.")
     print(f"source: {SRC}")
 
     comp_orig = bytes(d[STAGE2_OFF:STAGE2_OFF + STAGE2_COMP_LEN])
-    dec = bytearray(lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(comp_orig))
+    try:
+        dec = bytearray(lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(comp_orig))
+    except lzma.LZMAError as e:
+        sys.exit(f"FATAL: stage2 at offset {STAGE2_OFF:#x} is not valid LZMA "
+                  f"data ({e}). This usually means {SRC} isn't the RSA-patched "
+                  "output of patch_stage2_rsa_bypass.py -- run that script "
+                  "first and pass its bldr-patch/mtd0-rsa-bypass-patched.bin "
+                  "output here.")
 
     # Sanity: the RSA patch must already be present in the source (we don't
     # re-apply it here, only add the CRC compare patch on top).
@@ -106,9 +116,11 @@ def main():
         sys.exit("FATAL: recompressed stage2 does not fit before the trailer, abort")
 
     redec = lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(recomp)
-    assert redec == bytes(dec), "roundtrip mismatch, abort"
-    assert redec[RSA_PATCH_OFF:RSA_PATCH_OFF + 4] == RSA_PATCH_NEW
-    assert redec[CRC_PATCH_OFF:CRC_PATCH_OFF + 4] == CRC_PATCH_NEW
+    if (redec != bytes(dec)
+            or redec[RSA_PATCH_OFF:RSA_PATCH_OFF + 4] != RSA_PATCH_NEW
+            or redec[CRC_PATCH_OFF:CRC_PATCH_OFF + 4] != CRC_PATCH_NEW):
+        sys.exit("FATAL: internal roundtrip mismatch, abort (this indicates "
+                  "a bug in this script, not your input file -- please report it)")
 
     out = bytearray(d)
     out[STAGE2_OFF:STAGE2_OFF + STAGE2_COMP_LEN] = b"\x00" * STAGE2_COMP_LEN  # clear old region

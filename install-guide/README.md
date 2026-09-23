@@ -271,36 +271,62 @@ dd if=/dev/mtdN of=/mnt/mtd-bootloader-backup.bin   # the "bootloader" partition
 md5sum /mnt/mtd-bootloader-backup.bin
 # repeat dd for the "tclinux" (MAIN) and "tclinux_slave" partitions
 ```
-Copy these off the device onto your PC before continuing. They are the
-only recovery path if a write lands in the wrong place.
+Copy these off the device onto your PC before continuing — the
+`bootloader` one goes straight into §5a next; all three are your only
+recovery path if a write lands in the wrong place.
 
 ## 5a. Build your own patched bootloader
 
 This project ships no prebuilt bootloader binary — you build one now,
-from the `mtd-bootloader-backup.bin` you just dumped in §5. This keeps
-your unit's own board-info block (MAC, serial, a couple of unidentified
-codes — see `BOOTLOADER-PATCH.md`) completely untouched: the scripts
-below only ever rewrite two known code offsets, copying everything else
-through unmodified. Do this on your **PC**, not the router:
+from the `mtd-bootloader-backup.bin` you just copied onto your PC in §5
+(the RAM shell on the router stays open in the background; nothing here
+needs it). This keeps your unit's own board-info block (MAC, serial, a
+couple of unidentified codes — see `BOOTLOADER-PATCH.md`) completely
+untouched: the scripts below only ever rewrite two known code offsets,
+copying everything else through unmodified.
+
+Run both commands **from the repo root, on your PC**, not the router
+(the paths below assume that):
 
 ```sh
 python3 bldr-patch/patch_stage2_rsa_bypass.py /path/to/mtd-bootloader-backup.bin
+```
+Expect:
+```
+source: /path/to/mtd-bootloader-backup.bin
+recompressed stage2: ... bytes (budget ..., orig ...)
+wrote bldr-patch/mtd0-rsa-bypass-patched.bin (262144 bytes)
+patch site VA 0x83fb57f4: 10400121 -> 10000121
+```
+An `AssertionError`/`FATAL` here instead means the patch offset didn't
+match — almost always the bootloader banner precondition wasn't met, or
+`/path/to/mtd-bootloader-backup.bin` isn't a full 256KB dump. Do not
+continue; go back and re-check §5/the precondition section instead of
+re-running with `--force` (there is no such flag, on purpose).
+
+```sh
 python3 bldr-patch/patch_stage2_crc_bypass.py bldr-patch/mtd0-rsa-bypass-patched.bin
 ```
+Expect:
+```
+source: bldr-patch/mtd0-rsa-bypass-patched.bin
+RSA patch confirmed present @0x57f4: 10000121
+CRC patch applied @0x577c: 12820006 -> 10000006
+recompressed stage2: ... bytes (budget ..., orig ...)
+wrote bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin (262144 bytes)
+```
 
-Each script hard-asserts the original bytes at its patch offset before
-writing anything and refuses to run (with a clear error) if they don't
-match — this is the check that catches a zloader banner that doesn't
-match the precondition above, rather than silently corrupting the wrong
-location. The second command's output,
-`bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin`, is the file you flash
-in §7 — copy it to the USB stick alongside the images from §1.
-
-Sanity-check it's still a full 256KB mtd0 image and not, say, an empty
-file from a failed run:
+`bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin` is the file you flash in
+§7. Sanity-check its size (a failed run can leave a 0-byte or truncated
+file) and note its md5 — you'll compare against this in §7:
 ```sh
 ls -l bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin   # expect 262144 bytes
+md5sum bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin
 ```
+
+Now copy this file onto the USB stick, alongside `era-signed.bin` (§1),
+and plug the stick back into the router before continuing to §6 — the
+RAM shell is still running, nothing was lost while you were on the PC.
 
 ## 6. Flash OpenWrt to MAIN (mtd3) — safe, has a slave fallback
 
@@ -336,8 +362,8 @@ data entirely, which the boot chip checks strictly for this exact
 partition (see the appendix). It is not a shortcut, it's a guaranteed
 brick for this specific partition.
 
-1. Verify the file's md5 on the USB stick against your local copy of
-   `bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin` (§5a).
+1. Verify the file's md5 on the USB stick matches the one you noted in
+   §5a for `mtd0-rsa-and-crc-bypass-patched.bin`.
 2. Write it to the partition labelled `bootloader`:
    ```
    flash_erase /dev/mtd1 0 0

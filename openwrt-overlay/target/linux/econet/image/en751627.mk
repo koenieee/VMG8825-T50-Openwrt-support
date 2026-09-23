@@ -86,12 +86,12 @@ endef
 TARGET_DEVICES += zyxel_vmg8825-t50
 
 # Identical to zyxel_vmg8825-t50 in every way except the DTS: mtd1
-# (bootloader) is read-only here. Build/flash this once your bootloader
-# is already patched (BOOTLOADER-PATCH.md) -- there's no more reason for
-# mtd1 to be writable from Linux, and this closes that off. See
-# install-guide/README.md SS7a. Do NOT use this for the initial patch --
-# use the base zyxel_vmg8825-t50 device (or its -installer firmware
-# variant) for that one operation, since it needs to nandwrite mtd1.
+# (bootloader) is read-only here. Build/flash this once your own
+# bootloader patch is applied (BOOTLOADER-PATCH.md) -- there's no more
+# reason for mtd1 to be writable from Linux, and this closes that off.
+# See install-guide/README.md §7a. Do NOT use this for the initial
+# patch -- use the base zyxel_vmg8825-t50 device for that one operation
+# (install-guide/README.md §5a/§7), since it needs to nandwrite mtd1.
 define Device/zyxel_vmg8825-t50-locked
   $(Device/zyxel_vmg8825-t50)
   DEVICE_MODEL := VMG8825-T50 (bootloader-locked)

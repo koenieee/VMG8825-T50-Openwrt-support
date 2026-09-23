@@ -96,18 +96,20 @@
 			label = "bootloader";
 			reg = <0x0 0x40000>;
 			/* Deliberately NOT read-only here: needed so a booted OpenWrt
-			 * userspace can nandwrite a patched zloader stage2 here
-			 * (CRC-compare bypass patch, see BOOTLOADER-PATCH.md
-			 * and bldr-patch/patch_stage2_crc_bypass.py). ONLY ever
-			 * written deliberately, from a booted shell, with a
-			 * pre-write backup + post-write readback/md5 verify -- see
-			 * install-guide/README.md §4 before touching this.
+			 * userspace can nandwrite your own patched zloader stage2
+			 * here (RSA+CRC-compare bypass patch, see BOOTLOADER-PATCH.md
+			 * and bldr-patch/patch_stage2_{rsa,crc}_bypass.py -- no
+			 * prebuilt bootloader binary ships in this repo, you build
+			 * your own from your own dump). ONLY ever written
+			 * deliberately, from a booted shell, with a pre-write
+			 * backup + post-write readback/md5 verify -- see
+			 * install-guide/README.md §5a/§7 before touching this.
 			 *
-			 * This is the "unlocked"/installer variant used ONLY to
-			 * apply that one patch. Once it's applied, reflash the
-			 * "-locked" device variant (en751627_zyxel_vmg8825-t50-locked.dts)
+			 * This is the base ("unlocked") device build, used to apply
+			 * that one patch. Once it's applied, reflash the "-locked"
+			 * device variant (en751627_zyxel_vmg8825-t50-locked.dts)
 			 * instead, which overrides this node back to read-only --
-			 * see install-guide/README.md SS7a.
+			 * see install-guide/README.md §7a.
 			 */
 			/*
 			 * The board-info block near the end of stage1 holds the

@@ -1,0 +1,13 @@
+#!/bin/sh
+#
+# downloads.openwrt.org builds no target-specific packages for econet (yet),
+# so the targets/econet/... feed that the build writes into distfeeds.list
+# 404s and makes every `apk update` report an error. Drop that one line; the
+# architecture feeds (mips_24kc base/luci/packages/...) work fine. Once
+# upstream publishes the feed, deleting this file brings it back.
+#
+FEEDS=/etc/apk/repositories.d/distfeeds.list
+
+[ -f "$FEEDS" ] && sed -i '\|/targets/econet/|d' "$FEEDS"
+
+exit 0

@@ -209,7 +209,9 @@ worth documenting since it'll bite the next person too: this OpenWrt
 snapshot uses `apk`, not the older `opkg`, and `apk update`/`apk add`
 partially fail because the target-specific package feed
 (`targets/econet/en751627/packages/packages.adb`) 404s upstream — this
-target isn't (yet) building official target-specific binary packages.
+target isn't (yet) building official target-specific binary packages. (Since 2026-10-18 `base-files/etc/uci-defaults/08_drop-missing-target-feed`
+removes that line from `distfeeds.list` on first boot, so `apk update` no
+longer errors; it does not make the missing packages appear.)
 That feed is where an architecture-specific dependency (`libatomic1`
 for `libiperf3`) lives, so a plain `apk add iperf3` fails on a missing
 dependency that simply isn't published anywhere reachable. Worked

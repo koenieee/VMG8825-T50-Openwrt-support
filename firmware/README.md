@@ -44,10 +44,22 @@ Build your own `.trx` from source if you want one — see below.
   new packages and the RAM bump verified live (see above).
 - `vmg8825-t50-initramfs-kernel.bin` — a full OpenWrt kernel+rootfs that
   boots straight from RAM via `bldr-patch/netboot.py`, no flash writes
-  at all. See `install-guide/README.md` §2b. Useful for trying WiFi/LAN/
+  at all. See `install-guide/README.md` §4. Useful for trying WiFi/LAN/
   USB before deciding whether to flash anything. **Rebuilt 2026-09-21**
   with the same package/RAM changes as the images above; not
-  independently netboot-tested this round.
+  independently netboot-tested this round. Its size (8838099 bytes) is
+  not a multiple of 4, which the netboot stub generator used to reject,
+  and the by-hand `bldr-patch/netboot-stub-manual.txt` was still sized
+  for an older, smaller kernel, so the by-hand path ended in
+  `XZ-compressed data is corrupt`. Both fixed 2026-10-18 (the generator
+  now rounds up, the stub was regenerated for this file).
+- `vmg8825-t50-rootfs-data.bin` — an empty UBI image holding only the
+  `rootfs_data` volume, written once to the `rootfs_data` partition with
+  `ubiformat` (`install-guide/README.md` §6a). Without it OpenWrt keeps
+  its settings in RAM and forgets them on every reboot. Not added until
+  2026-10-18; the guide did not have the step before that either.
+- `diffconfig` — the OpenWrt build config these images were built with
+  (see below).
 
 ## Building your own
 
@@ -56,13 +68,24 @@ git submodule update --init --depth 1        # fetch upstream OpenWrt
 cp -r openwrt-overlay/target/linux/econet/* openwrt/target/linux/econet/
 cp -r openwrt-overlay/package/kernel/econet-eth/* openwrt/package/kernel/econet-eth/
 cd openwrt
-echo "CONFIG_TARGET_econet=y
-CONFIG_TARGET_econet_en751627=y
-CONFIG_TARGET_econet_en751627_DEVICE_zyxel_vmg8825-t50=y" > .config
 ./scripts/feeds update -a && ./scripts/feeds install -a
+cp ../firmware/diffconfig .config
 make defconfig
 make -j$(nproc)
 ```
+`firmware/diffconfig` is the exact config of the shipped images, from
+`scripts/diffconfig.sh`: the target, both device profiles (`-t50` and
+`-t50-locked`), the RAM-boot initramfs, and `iperf3` for testing. The
+EN751627 support itself is not in that file and not a separate package
+feed: it is the target code in `openwrt-overlay/target/linux/econet/`
+(device trees, the `en751627` subtarget and its kernel config
+`en751627/config-6.18`, kernel patches, base-files) plus the ethernet
+driver in `openwrt-overlay/package/kernel/econet-eth/`, which the two `cp`
+lines put into the OpenWrt tree. The modules come out of the normal build.
+The device's package list (WiFi, USB storage, LuCI, ...) is
+`DEVICE_PACKAGES` in `openwrt-overlay/target/linux/econet/image/en751627.mk`.
+After changing the overlay later, `tools/sync-overlay.sh` copies it over
+again.
 This builds successfully end to end (verified) and produces
 `bin/targets/econet/en751627/openwrt-econet-en751627-zyxel_vmg8825-t50-squashfs-tclinux.trx`.
 Wrap it into the era header with:

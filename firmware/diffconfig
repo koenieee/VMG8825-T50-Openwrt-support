@@ -1,0 +1,20 @@
+# OpenWrt build config used for the images in firmware/ (output of
+# openwrt/scripts/diffconfig.sh). Everything not listed is the OpenWrt
+# default; the per-device package set (WiFi, USB, LuCI, ...) comes from
+# DEVICE_PACKAGES in openwrt-overlay/target/linux/econet/image/en751627.mk,
+# not from here. Use it from inside openwrt/ after copying the overlay in:
+#   cp ../firmware/diffconfig .config && make defconfig
+#
+# INITRAMFS + XZ are what produce the RAM-boot initramfs-kernel.bin.
+# iperf3 is only there for throughput testing; drop those three lines if
+# you don't want it.
+CONFIG_TARGET_econet=y
+CONFIG_TARGET_econet_en751627=y
+CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_DEVICE_econet_en751627_DEVICE_zyxel_vmg8825-t50=y
+CONFIG_TARGET_DEVICE_econet_en751627_DEVICE_zyxel_vmg8825-t50-locked=y
+CONFIG_PACKAGE_iperf3=y
+CONFIG_PACKAGE_libatomic=y
+CONFIG_PACKAGE_libiperf3=y
+CONFIG_TARGET_INITRAMFS_COMPRESSION_XZ=y
+CONFIG_TARGET_ROOTFS_INITRAMFS=y

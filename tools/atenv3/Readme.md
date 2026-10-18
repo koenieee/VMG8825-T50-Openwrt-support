@@ -17,6 +17,19 @@ is impossible.
 cc -O2 -o atenv3_passwd atenv3_passwd.c
 ```
 
+The prebuilt `atenv3_passwd` here is a static, stripped binary for plain
+`x86-64` (baseline ISA), so it runs on any 64-bit x86 Linux, old CPUs
+included. It was built in an Ubuntu 24.04 container with:
+```bash
+gcc -O2 -march=x86-64 -mtune=generic -static -s -o atenv3_passwd atenv3_passwd.c
+```
+An earlier binary was built on a distro whose own C runtime is compiled for
+`x86-64-v3`, and failed elsewhere with `CPU ISA level is lower than
+required`. Passing `-march=x86-64` alone does not fix that on such a distro,
+because the requirement is inherited from its crt/libc objects. Build in a
+container or on a generic distro, or simply compile from source on the
+machine you run it on.
+
 ## Usage
 
 ```bash

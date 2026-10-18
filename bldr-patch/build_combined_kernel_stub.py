@@ -39,7 +39,14 @@ def build_combined(src, dst, length, entry):
     """ONE self-contained stub: word-copy (src->dst) + D$WB/I$inv over dst range +
     jr into entry -- all in a single jump call, so bldr's own command dispatcher
     is never asked to survive a SECOND `jump` after the low-RAM-stomping copy."""
-    assert length % 4 == 0 and 0 < length <= 0xFFFFFFFF
+    # The copy loop moves whole words. OpenWrt's initramfs image is rarely a
+    # multiple of 4, so round up: the 1-3 extra bytes come from RAM just past
+    # the TFTP'd file and land just past the kernel image -- harmless. Without
+    # this, a stub built for the real file size either asserted (netboot.py)
+    # or, sized by hand for an older build, copied a truncated kernel ("XZ-
+    # compressed data is corrupt -- System halted").
+    length = (length + 3) & ~3
+    assert 0 < length <= 0xFFFFFFFF
     words = []
 
     words += uart_marker("STRT")
@@ -97,8 +104,17 @@ if __name__ == "__main__":
     KLEN = os.path.getsize(kernel_path)
     SRC = 0x80020000   # only address bldr's ATLD/TFTP will accept
     DST = 0x80002000   # TRX_LOADADDR -- real linked kernel entry point
+    STUB_BASE = 0xa1000000  # same KSEG1 address netboot.py writes the stub to
     words = build_combined(SRC, DST, KLEN, DST)
     print("word count:", len(words), " byte count:", len(words)*4)
-    out = b"".join(struct.pack(">I", w) for w in words)
-    open(out_path, "wb").write(out)
-    print("wrote", len(out), "bytes to", out_path)
+    if out_path.endswith(".txt"):
+        # Paste-able bldr> command list for the by-hand netboot path
+        # (install-guide §4b), e.g. netboot-stub-manual.txt.
+        lines = ["memwl %x %x" % (STUB_BASE + i * 4, w) for i, w in enumerate(words)]
+        lines.append("jump %x" % STUB_BASE)
+        open(out_path, "w").write("\n".join(lines) + "\n")
+        print("wrote", len(lines), "bldr> commands to", out_path)
+    else:
+        out = b"".join(struct.pack(">I", w) for w in words)
+        open(out_path, "wb").write(out)
+        print("wrote", len(out), "bytes to", out_path)

@@ -38,8 +38,8 @@ project ships no prebuilt bootloader binary. So the real order is:
    initramfs kernel straight into RAM (§4). RAM boot bypasses the gates.
 2. From that RAM shell, back up flash and build your own patched
    bootloader from the backup (§5, §5a).
-3. Flash OpenWrt to MAIN (safe) and your patched bootloader to mtd1
-   (removes the gates) (§6, §7).
+3. Flash OpenWrt to MAIN (safe), format the settings partition, and
+   flash your patched bootloader to mtd1 (removes the gates) (§6, §6a, §7).
 4. Reboot into the now-patched bootloader, which boots MAIN cleanly (§8).
 
 Both flash writes happen from the same gate-free RAM shell, so you never
@@ -84,6 +84,18 @@ against them on a different one will fail loudly (which is the point —
 see `BOOTLOADER-PATCH.md`) rather than silently corrupt the wrong
 location. Reproducing the patch for a different version is not covered
 by this guide.
+
+One other version has since been reported working by a tester, all the
+way to OpenWrt booting from MAIN:
+```
+EN751627 at Tue Feb 26 19:13:00 CST 2019 version 1.1 free bootbase
+...
+ZyXEL zloader v1.4.2 (02/26/2019 - 19:12:56)
+```
+That is one report, not something this project has verified itself. Since
+the §5a scripts check the original instruction bytes at both patch sites
+before changing anything, running them on an unlisted version is safe to
+*try*: a mismatch stops with `FATAL` before any output file is written.
 
 ## Before you start
 
@@ -242,10 +254,17 @@ configured; otherwise pull and reapply power by hand.
 > does that relocation. Rather than typing ~100 lines, open
 > `bldr-patch/netboot-stub-manual.txt` and paste its entire contents into
 > the terminal in one go (any serial terminal sends a multi-line paste as
-> if you'd typed each line). It only matches the exact kernel file above
-> byte-for-byte; if you rebuild your own with a different size, regenerate
-> it with `bldr-patch/build_combined_kernel_stub.py` (see that file's
-> comments) instead of reusing this one.
+> if you'd typed each line). The block has the kernel's size baked in, so
+> it only fits the exact kernel file above. If you netboot a kernel you
+> built yourself, regenerate it first:
+> ```
+> python3 bldr-patch/build_combined_kernel_stub.py <your-initramfs-kernel.bin> bldr-patch/netboot-stub-manual.txt
+> ```
+> A block made for a different size copies too little (or too much) of
+> the kernel, and the boot stops right after the jump with
+> `XZ-compressed data is corrupt -- System halted`. (An earlier version of
+> this repo shipped a block that was out of date for the shipped kernel and
+> failed exactly like that; it was regenerated 2026-10-18.)
 >
 > The stub's last line is `jump a1000000` — the point of no return *for
 > this boot only* (not a flash write; a botched attempt just means
@@ -269,8 +288,12 @@ before writing anything (replace `mtdN` with the number you read):
 mount -t vfat /dev/sda1 /mnt
 dd if=/dev/mtdN of=/mnt/mtd-bootloader-backup.bin   # the "bootloader" partition
 md5sum /mnt/mtd-bootloader-backup.bin
-# repeat dd for the "tclinux" (MAIN) and "tclinux_slave" partitions
+# repeat dd for the "tclinux" (MAIN), "tclinux_slave" and "rootfs_data" partitions
 ```
+`rootfs_data` (82 MiB) is the area §6a reformats for OpenWrt's settings.
+It is the tail of the OEM `reservearea`, chosen because it lies past the
+WiFi calibration and the known OEM data. A stock unit can still have bytes
+there, though, and §6a erases them, so keep a copy.
 Copy these off the device onto your PC before continuing — the
 `bootloader` one goes straight into §5a next; all three are your only
 recovery path if a write lands in the wrong place.
@@ -348,6 +371,25 @@ No output from `cmp` means they match. This write is safe: if anything is
 wrong you can redo it, and the OEM `tclinux_slave` recovery copy is
 untouched as long as you never wrote to it.
 
+## 6a. Format the settings partition (`rootfs_data`) — do not skip
+
+OpenWrt keeps every change you make (root password, WiFi, network) on its
+own UBI partition, `rootfs_data`, separate from MAIN. On a stock router that
+area still holds OEM leftovers, so OpenWrt cannot use it: it falls back to
+RAM, and **every reboot comes back with factory settings** (no root
+password, SSID `OpenWrt`). You format it once, here. Copy
+`firmware/vmg8825-t50-rootfs-data.bin` to the USB stick, then in the same
+RAM shell:
+```
+grep rootfs_data /proc/mtd          # note its mtdN
+ubidetach -p /dev/mtdN 2>/dev/null  # only matters on a reinstall
+ubiformat /dev/mtdN -y -f /mnt/vmg8825-t50-rootfs-data.bin
+```
+`ubiformat` skips bad blocks and fills the rest of the partition with
+empty UBI blocks; on first boot the `rootfs_data` volume grows to the full
+82 MiB by itself. Only do this to the partition labelled `rootfs_data`.
+`sysupgrade` never touches it, so this is a one-time step.
+
 ## 7. Flash the patched bootloader (mtd1) — no fallback, read fully first
 
 This is the one write with **no recovery slot**. Do it from the same live
@@ -424,6 +466,11 @@ A full real capture of this, ATGO through to a working shell, is in
 [`example-boot-log.txt`](example-boot-log.txt) if you want something to
 diff your own boot against.
 
+Once booted, you do not need to stay on serial: dropbear (SSH) is enabled
+by default like any stock OpenWrt build, reachable on the LAN IP
+(`192.168.1.1`, `cat /etc/config/network` to confirm) once `gmac0` links
+up. Serial stays the fallback for a broken-network state.
+
 ### 8a. If it boots the slave / `==> boot flag = 1` — clear the boot flag
 
 The boot flag is a **third, independent gate**. If any earlier boot
@@ -444,10 +491,34 @@ ATGO                    # boot MAIN
 both bootloader gates patched, a clean flash keeps the flag at 0 and you
 should not hit this again in normal use.
 
-Once booted, you do not need to stay on serial: dropbear (SSH) is enabled
-by default like any stock OpenWrt build, reachable on the LAN IP
-(`192.168.1.1`, `cat /etc/config/network` to confirm) once `gmac0` links
-up. Serial stays the fallback for a broken-network state.
+### 8b. Settings are lost on every reboot
+
+If the root password and WiFi settings reset to defaults on every boot,
+§6a was skipped (it was missing from earlier versions of this guide). The
+boot log shows it:
+```
+ubi1 error: ubi_read_volume_table: the layout volume was not found
+UBI error: cannot attach mtd10
+...
+mount_root: no usable overlay filesystem found, using tmpfs overlay
+```
+The fix needs no netboot. In the OpenWrt you are already running, get
+`vmg8825-t50-rootfs-data.bin` onto the router (USB stick, or
+`scp` to `/tmp`), run the three §6a commands against `rootfs_data`
+(adjust the path to the file), then `reboot`. Anything you changed before
+that only ever lived in RAM, so set it again after the reboot; from then
+on it sticks.
+
+### 8c. `apk update` reports a 404
+
+OpenWrt does not (yet) publish target-specific packages for this SoC, so
+the `targets/econet/en751627/packages/packages.adb` feed does not exist.
+The normal package feeds work. Builds from the current overlay drop that
+line on first boot; on prebuilt images from before 2026-10-18, remove it
+yourself:
+```
+sed -i '\|/targets/econet/|d' /etc/apk/repositories.d/distfeeds.list
+```
 
 ## 9. Bring up WiFi
 

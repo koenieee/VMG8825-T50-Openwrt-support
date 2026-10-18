@@ -136,7 +136,7 @@ Software (Linux assumed below; on Windows, do this inside WSL):
     precondition above. (Building your own is only needed if you've
     changed kernel config — see §4a.)
   - `firmware/vmg8825-t50-era-signed.bin` — the OpenWrt build for MAIN
-    (mtd3). WiFi ships disabled; no SSID/passphrase baked in.
+    (mtd3). Both WiFi APs come up enabled as open `OpenWrt` networks; no SSID/passphrase of your own is baked in.
   - `bldr-patch/patch_stage2_rsa_bypass.py` and
     `bldr-patch/patch_stage2_crc_bypass.py` — the two scripts that turn a
     dump of **your own** mtd0/bootloader partition into the patched
@@ -390,6 +390,13 @@ empty UBI blocks; on first boot the `rootfs_data` volume grows to the full
 82 MiB by itself. Only do this to the partition labelled `rootfs_data`.
 `sysupgrade` never touches it, so this is a one-time step.
 
+Images built from the overlay since 2026-10-18 also carry
+`vmg8825-format-overlay`, which does the same without the `.bin` file
+(it looks up `rootfs_data` by name, refuses if the overlay already works,
+and creates the volume with `ubimkvol`). The RAM-boot kernel in
+`firmware/` predates it, so the commands above are the route that always
+works.
+
 ## 7. Flash the patched bootloader (mtd1) — no fallback, read fully first
 
 This is the one write with **no recovery slot**. Do it from the same live
@@ -505,7 +512,8 @@ mount_root: no usable overlay filesystem found, using tmpfs overlay
 The fix needs no netboot. In the OpenWrt you are already running, get
 `vmg8825-t50-rootfs-data.bin` onto the router (USB stick, or
 `scp` to `/tmp`), run the three §6a commands against `rootfs_data`
-(adjust the path to the file), then `reboot`. Anything you changed before
+(adjust the path to the file), or on a newer image just run
+`vmg8825-format-overlay`, then `reboot`. Anything you changed before
 that only ever lived in RAM, so set it again after the reboot; from then
 on it sticks.
 
@@ -520,17 +528,11 @@ yourself:
 sed -i '\|/targets/econet/|d' /etc/apk/repositories.d/distfeeds.list
 ```
 
-## 9. Bring up WiFi
+## 9. Secure WiFi
 
-WiFi ships disabled:
-```
-uci set wireless.default_radio0.disabled=0
-uci set wireless.default_radio1.disabled=0
-uci commit wireless
-wifi
-```
-Both radios come up as open APs (SSID `OpenWrt`). **Before real use**, set
-an SSID/passphrase:
+Both radios come up enabled on first boot, as open APs (SSID `OpenWrt`,
+no encryption), so a freshly flashed router is reachable without serial. **Before real use**, set an SSID and a
+passphrase. The settings only survive a reboot once §6a is done:
 ```
 uci set wireless.default_radio0.ssid=...
 uci set wireless.default_radio0.encryption=psk2

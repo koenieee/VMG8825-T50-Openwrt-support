@@ -12,7 +12,9 @@ console, and following `install-guide/README.md` step by step.
 
 - OpenWrt boots fully from MAIN (`tclinux`/mtd3): kernel + squashfs
   rootfs + a persistent UBIFS overlay on its own MTD partition, `procd`,
-  root shell.
+  root shell. The overlay partition has to be formatted once during the
+  install (`install-guide/README.md` §6a); without that step every boot
+  comes up with factory settings.
 - WiFi (MediaTek MT7615, two cards, dualband) — AP and client (STA)
   mode both work, and the board splits the bands itself on first boot:
   2.4 GHz on the TSSI-calibrated card at `1fb81000.pcie`, 5 GHz on the
@@ -187,6 +189,19 @@ which then survives every following reboot until explicitly cleared:
    patched, a clean flash keeps the flag at 0 and this gate is no longer
    hit in normal use.
 
+## Building the firmware yourself
+
+```
+tools/build-firmware.sh        # fresh clone -> out/: both era images, the RAM-boot
+                               # kernel, rootfs-data.bin and a matching netboot stub
+```
+It fetches OpenWrt at the tested commit, copies `openwrt-overlay/` in,
+runs the feeds, builds with the shipped `firmware/diffconfig`, era-wraps
+both device variants and regenerates `netboot-stub-manual.txt` for the new
+kernel size. Reruns are incremental. Host packages are OpenWrt's own
+([build system setup](https://openwrt.org/docs/guide-developer/toolchain/install-buildsystem)).
+The manual steps are in `firmware/README.md` ("Building your own").
+
 ## Development workflow
 
 Two helpers cover the normal loop once the board already runs OpenWrt:
@@ -233,7 +248,7 @@ module for a different smart-plug API.
 | DSL | ADSL2+/VDSL2 (vendor `mt7510` module) — no mainline driver, not supported |
 | USB | 1x USB2.0 + 1x USB3.0, mass storage tested |
 | Serial console | 115200 8N1, CR-only, `/dev/ttyUSB0`, 3.3V header. No JTAG. |
-| Bootloader | Zyxel **zloader v1.4.4** (2021-01-04), legacy TRX+RSA, LZMA kernel |
+| Bootloader | Zyxel **zloader v1.4.4** (2021-01-04), legacy TRX+RSA, LZMA kernel. v1.4.2 (2019-02-26) reported working by a tester |
 
 Source: https://openwrt.org/inbox/toh/zyxel/zyxel_vmg8825-t50
 
@@ -241,9 +256,10 @@ Source: https://openwrt.org/inbox/toh/zyxel/zyxel_vmg8825-t50
 
 ## Getting started
 
-Start at `install-guide/README.md` — it covers the precondition (which
-exact zloader build this applies to), flashing the prebuilt patched
-bootloader, and flashing the prebuilt OpenWrt image, in order.
+Start at `install-guide/README.md`. In order, it covers the precondition
+(which zloader build this applies to), netbooting a RAM shell, backups,
+patching *your own* bootloader dump, flashing the prebuilt OpenWrt image,
+and formatting the settings partition.
 
 For the bootloader patch's technical details (what it changes, why both
 gates are needed) see `BOOTLOADER-PATCH.md`. For the vendor image
@@ -257,9 +273,10 @@ port was debugged end to end, see `HISTORY.md`.
 This repo holds our own changes, tools, and documentation — it is not a
 full OpenWrt checkout:
 
-- `openwrt/` — upstream OpenWrt, added as a git submodule
-  (https://github.com/openwrt/openwrt.git). Run
-  `git submodule update --init --depth 1` after cloning.
+- `openwrt/` — upstream OpenWrt, a git submodule pinned at the tested
+  commit (https://github.com/openwrt/openwrt.git). Run
+  `git submodule update --init --depth 1` after cloning, or let
+  `tools/build-firmware.sh` do it.
 - `openwrt-overlay/` — all of our changes to `target/linux/econet/` and
   `package/kernel/econet-eth/`, applied on top of the upstream checkout
   (see its own README for the exact copy command).
@@ -271,7 +288,11 @@ full OpenWrt checkout:
 - `board-files/` — DTS/image scaffolding and the era-header template
   `build_era_trx.py` uses.
 - `tools/atenv3/` — the supervisor-password derivation tool needed for
-  the bootloader's `ATSE`/`ATEN` debug-unlock.
+  the bootloader's `ATSE`/`ATEN` debug-unlock (source plus a static
+  x86-64 binary that runs on any 64-bit x86 Linux).
+- `tools/build-firmware.sh`, `tools/sync-overlay.sh`,
+  `tools/flash-openwrt.sh` — build from source, keep the overlay and the
+  OpenWrt tree in step, and upgrade a running router over SSH.
  - `firmware/` — the prebuilt artifacts you actually flash:
    `vmg8825-t50-era-signed.bin` (plain OpenWrt build, MAIN/mtd3) and
    `vmg8825-t50-era-signed-locked.bin` (same build, but mtd1 is read-only
@@ -279,8 +300,10 @@ full OpenWrt checkout:
    is applied and verified; see `install-guide/README.md` §7a). No
    prebuilt bootloader binary ships here — you build your own from your
    own device's bootloader dump (`install-guide/README.md` §5a,
-   `BOOTLOADER-PATCH.md`). Both images were rebuilt 2026-09-21 from the
-   current tree. Both WiFi APs come up enabled on the OpenWrt
+   `BOOTLOADER-PATCH.md`). Also: `vmg8825-t50-initramfs-kernel.bin` (RAM
+   boot, §4), `vmg8825-t50-rootfs-data.bin` (the settings partition,
+   §6a) and `diffconfig` (the build config). Both images were rebuilt
+   2026-09-21 from the current tree. Both WiFi APs come up enabled on the OpenWrt
    defaults (SSID `OpenWrt`, open) so the board is reachable without a
    serial cable — set an SSID and a passphrase before using it; no
    network name or passphrase is baked in.

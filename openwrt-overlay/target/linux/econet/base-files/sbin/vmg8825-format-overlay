@@ -1,0 +1,48 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+#
+# One-time setup of the "rootfs_data" partition that holds OpenWrt's
+# settings on the VMG8825-T50 (install-guide/README.md §6a/§8b).
+#
+# On a stock router that partition still holds OEM bytes, so ubi1 never
+# attaches, mount_root falls back to a tmpfs overlay, and every boot comes
+# up with factory defaults. This formats it as UBI and creates one empty
+# "rootfs_data" volume over all of it; UBIFS formats that volume itself on
+# the next boot, exactly as with the ubinize'd rootfs-data.bin.
+#
+# Usage: vmg8825-format-overlay [-f]
+#   -f  also run when the overlay is already working (wipes all settings)
+#
+# Works from the RAM (netboot) shell and from an installed system. Only the
+# partition labelled "rootfs_data" is ever touched.
+
+set -e
+
+force=
+[ "$1" = "-f" ] && force=1
+
+die() { echo "vmg8825-format-overlay: $*" >&2; exit 1; }
+
+mtd=$(grep '"rootfs_data"' /proc/mtd | sed 's/:.*//')
+[ -n "$mtd" ] || die 'no MTD partition labelled "rootfs_data" -- wrong board or devicetree'
+dev=/dev/$mtd
+
+if grep -q ' /overlay ubifs ' /proc/mounts && [ -z "$force" ]; then
+	die "the overlay already runs on UBIFS, nothing to fix (-f wipes all settings anyway)"
+fi
+
+for t in ubiformat ubiattach ubidetach ubimkvol; do
+	command -v $t >/dev/null || die "$t missing (package ubi-utils)"
+done
+
+echo "formatting $dev (rootfs_data) -- everything on it is erased"
+
+# Detach first if a previous attempt (or the kernel's ubi.mtd=) attached it.
+ubidetach -p "$dev" 2>/dev/null || true
+
+ubiformat "$dev" -y
+num=$(ubiattach -p "$dev" | sed -n 's/.*UBI device number \([0-9]*\).*/\1/p')
+[ -n "$num" ] || die "ubiattach did not report a device number"
+ubimkvol "/dev/ubi$num" -N rootfs_data -m
+
+echo "done. Reboot; settings you change after that are kept."

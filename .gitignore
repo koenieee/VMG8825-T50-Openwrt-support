@@ -12,3 +12,6 @@ logging.txt
 *.session
 .env
 bldr-patch/*.log
+
+# tools/build-firmware.sh output
+out/

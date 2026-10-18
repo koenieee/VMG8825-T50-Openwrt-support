@@ -1,0 +1,64 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+#
+# Back up every flash partition of the VMG8825-T50 to a directory, by name
+# (install-guide/README.md §5). Run it from the RAM (netboot) shell before
+# the first flash write; it only reads.
+#
+# Usage: vmg8825-backup-flash [DIR]
+#   DIR defaults to /mnt (the USB stick, mounted as in §5). Writes
+#   mtd-<label>.bin per partition plus md5sums.txt, and checks every file
+#   against a second read so a flaky read does not go unnoticed.
+#
+# "all_of_flash" (the whole 256 MiB chip) and "ubi" (a window inside
+# tclinux) are skipped by default: every byte they hold is already in the
+# named partitions. Set FULL=1 to also write the whole-chip image.
+
+set -e
+
+dir="${1:-/mnt}"
+
+die() { echo "vmg8825-backup-flash: $*" >&2; exit 1; }
+
+[ -d "$dir" ] || die "$dir does not exist"
+[ "$dir" != /mnt ] || grep -q ' /mnt ' /proc/mounts || \
+	die "nothing mounted on /mnt -- mount the USB stick first: mount -t vfat /dev/sda1 /mnt"
+grep -q '"tclinux"' /proc/mtd || die "no tclinux partition -- wrong board?"
+
+# Free space check: sum of the partitions we are about to write.
+need=0
+while read -r dev size _ name; do
+	case "$name" in
+	'"ubi"') continue ;;
+	'"all_of_flash"') [ -n "$FULL" ] || continue ;;
+	esac
+	need=$((need + 0x$size / 1024))
+done <<EOF
+$(sed 1d /proc/mtd)
+EOF
+free=$(df -k "$dir" | awk 'NR==2 {print $4}')
+[ "$free" -gt "$need" ] || die "$dir has ${free} KiB free, needs ${need} KiB"
+
+cd "$dir"
+: > md5sums.txt
+sed 1d /proc/mtd | while read -r dev _ _ name; do
+	dev=${dev%:}
+	label=$(echo "$name" | tr -d '"')
+	case "$label" in
+	ubi) continue ;;
+	all_of_flash) [ -n "$FULL" ] || continue ;;
+	esac
+	out="mtd-$label.bin"
+	printf '%-14s /dev/%-6s -> %s ... ' "$label" "$dev" "$out"
+	dd if="/dev/$dev" of="$out" bs=128k 2>/dev/null || die "read of /dev/$dev failed"
+	sum=$(md5sum "$out" | cut -d' ' -f1)
+	again=$(dd if="/dev/$dev" bs=128k 2>/dev/null | md5sum | cut -d' ' -f1)
+	[ "$sum" = "$again" ] || die "/dev/$dev read back differently twice -- do not trust this backup"
+	echo "$sum  $out" >> md5sums.txt
+	echo ok
+done
+
+sync
+echo
+echo "done: $(wc -l < md5sums.txt) partitions in $dir, checksums in $dir/md5sums.txt."
+echo "Copy the whole set to your PC before writing anything."

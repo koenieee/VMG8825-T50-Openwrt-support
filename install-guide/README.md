@@ -107,6 +107,10 @@ before changing anything, running them on an unlisted version is safe to
   There is no network-reachable recovery path. Serial is the only way in.
 - Every step up to and including the §5 backup is non-destructive. The
   first write to flash is §6.
+- Run `tools/preflight.sh` once the serial adapter is plugged in. It
+  checks the tools, access to the serial port, the unlock tool, the
+  downloaded images against `firmware/SHA256SUMS`, that the netboot stub
+  fits the kernel, and the PC's network address for TFTP. It only reads.
 
 ## 1. What you need
 
@@ -281,6 +285,16 @@ You are now in a RAM shell with the real flash exposed as MTD devices.
 ```
 cat /proc/mtd
 ```
+The quickest way: mount the USB stick and let the RAM shell do all of it.
+```
+mount -t vfat /dev/sda1 /mnt
+vmg8825-backup-flash /mnt
+```
+That writes one `mtd-<label>.bin` per partition, reads each one twice to
+make sure the two reads agree, and puts the checksums in
+`/mnt/md5sums.txt`. It is in the RAM-boot kernel from 2026-10-18 on. By
+hand it goes like this:
+
 Note the `mtdN` number next to each label. Mount the USB stick and back
 up the `bootloader`, `tclinux` (MAIN), and `tclinux_slave` partitions
 before writing anything (replace `mtdN` with the number you read):

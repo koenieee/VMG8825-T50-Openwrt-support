@@ -202,6 +202,14 @@ kernel size. Reruns are incremental. Host packages are OpenWrt's own
 ([build system setup](https://openwrt.org/docs/guide-developer/toolchain/install-buildsystem)).
 The manual steps are in `firmware/README.md` ("Building your own").
 
+If your distro lacks OpenWrt's build dependencies (or you are not on
+Linux), `tools/build-in-docker.sh` runs the same build in a pinned
+Ubuntu 24.04 container. It takes the same options and writes to the same
+`out/`. Use one or the other for a given checkout, not both: host tools
+built on one side do not always run on the other. (The container image
+builds, but a complete firmware build inside it has not been run through
+to the end yet; the host route above has.)
+
 ## Development workflow
 
 Two helpers cover the normal loop once the board already runs OpenWrt:
@@ -256,7 +264,7 @@ Source: https://openwrt.org/inbox/toh/zyxel/zyxel_vmg8825-t50
 
 ## Getting started
 
-Start at `install-guide/README.md`. In order, it covers the precondition
+Start at `install-guide/README.md`, and run `tools/preflight.sh` first. In order, it covers the precondition
 (which zloader build this applies to), netbooting a RAM shell, backups,
 patching *your own* bootloader dump, flashing the prebuilt OpenWrt image,
 and formatting the settings partition.
@@ -290,9 +298,12 @@ full OpenWrt checkout:
 - `tools/atenv3/` — the supervisor-password derivation tool needed for
   the bootloader's `ATSE`/`ATEN` debug-unlock (source plus a static
   x86-64 binary that runs on any 64-bit x86 Linux).
-- `tools/build-firmware.sh`, `tools/sync-overlay.sh`,
-  `tools/flash-openwrt.sh` — build from source, keep the overlay and the
-  OpenWrt tree in step, and upgrade a running router over SSH.
+- `tools/preflight.sh` — checks the PC side before an install (tools,
+  serial port access, unlock tool, image checksums, stub/kernel fit).
+- `tools/build-firmware.sh`, `tools/build-in-docker.sh`,
+  `tools/sync-overlay.sh`, `tools/flash-openwrt.sh` — build from source
+  (on the host or in a container), keep the overlay and the OpenWrt tree
+  in step, and upgrade a running router over SSH.
  - `firmware/` — the prebuilt artifacts you actually flash:
    `vmg8825-t50-era-signed.bin` (plain OpenWrt build, MAIN/mtd3) and
    `vmg8825-t50-era-signed-locked.bin` (same build, but mtd1 is read-only
@@ -303,7 +314,7 @@ full OpenWrt checkout:
    `BOOTLOADER-PATCH.md`). Also: `vmg8825-t50-initramfs-kernel.bin` (RAM
    boot, §4), `vmg8825-t50-rootfs-data.bin` (the settings partition,
    §6a) and `diffconfig` (the build config). Both images were rebuilt
-   2026-09-21 from the current tree. Both WiFi APs come up enabled on the OpenWrt
+   2026-10-18 from the current tree. Both WiFi APs come up enabled on the OpenWrt
    defaults (SSID `OpenWrt`, open) so the board is reachable without a
    serial cable — set an SSID and a passphrase before using it; no
    network name or passphrase is baked in.

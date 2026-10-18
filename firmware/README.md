@@ -11,11 +11,19 @@ the shipped `era-signed.bin` (the two are only consistent when produced
 together; keeping a mismatched pair around is actively misleading).
 Build your own `.trx` from source if you want one — see below.
 
-> **All three images were rebuilt 2026-09-21** from the current tree:
-> the fifth socket and the port names, hardware flow offload on by
-> default, the factory MAC from the bootloader's board-info block,
-> `sysupgrade`, the watchdog and the WiFi band split. See the
-> performance section of the top-level `README.md`.
+> **All images were rebuilt 2026-10-18** from the current tree, with
+> `tools/build-firmware.sh`. Against the 2026-09-21 images that were
+> flashed and tested on hardware, the kernel is **byte-for-byte
+> identical** (compared inside the era images). The rootfs differs only
+> in three new scripts plus their package metadata:
+> `/etc/uci-defaults/08_drop-missing-target-feed` (no more apk 404),
+> `/sbin/vmg8825-format-overlay` (install §6a without the `.bin`) and
+> `/sbin/vmg8825-backup-flash` (install §5 in one command). Also,
+> `modules.builtin` now lists the watchdog driver, which was already in
+> the kernel. These exact files have not been booted on hardware
+> themselves. If one misbehaves, the 2026-09-21 images are in git history
+> (`git log -- firmware/`). Check your download with
+> `sha256sum -c SHA256SUMS` in this directory, or run `tools/preflight.sh`.
 
 - `vmg8825-t50-era-signed.bin` — the OpenWrt build, wrapped in the
   era-0x174 header this board's zloader expects, ready to flash to MAIN.
@@ -45,21 +53,22 @@ Build your own `.trx` from source if you want one — see below.
 - `vmg8825-t50-initramfs-kernel.bin` — a full OpenWrt kernel+rootfs that
   boots straight from RAM via `bldr-patch/netboot.py`, no flash writes
   at all. See `install-guide/README.md` §4. Useful for trying WiFi/LAN/
-  USB before deciding whether to flash anything. **Rebuilt 2026-09-21**
-  with the same package/RAM changes as the images above; not
-  independently netboot-tested this round. Its size (8838099 bytes) is
-  not a multiple of 4, which the netboot stub generator used to reject,
-  and the by-hand `bldr-patch/netboot-stub-manual.txt` was still sized
-  for an older, smaller kernel, so the by-hand path ended in
-  `XZ-compressed data is corrupt`. Both fixed 2026-10-18 (the generator
-  now rounds up, the stub was regenerated for this file).
+  USB before deciding whether to flash anything. Its RAM shell also has
+  `vmg8825-backup-flash` and `vmg8825-format-overlay` for §5 and §6a.
+  `bldr-patch/netboot-stub-manual.txt` is generated for exactly this
+  file. Before 2026-10-18 that stub was sized for an older, smaller
+  kernel, so the by-hand netboot ended in `XZ-compressed data is
+  corrupt`; `tools/preflight.sh` now catches a stub/kernel mismatch.
 - `vmg8825-t50-rootfs-data.bin` — an empty UBI image holding only the
   `rootfs_data` volume, written once to the `rootfs_data` partition with
   `ubiformat` (`install-guide/README.md` §6a). Without it OpenWrt keeps
   its settings in RAM and forgets them on every reboot. Not added until
   2026-10-18; the guide did not have the step before that either.
+  (`ubinize` stamps a random image sequence number into it, so it differs
+  from build to build; that is expected.)
 - `diffconfig` — the OpenWrt build config these images were built with
   (see below).
+- `SHA256SUMS` — checksums of everything above.
 
 ## Building your own
 

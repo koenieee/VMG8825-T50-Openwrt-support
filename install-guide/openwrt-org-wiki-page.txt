@@ -58,6 +58,7 @@ This box is only the outline, don't improvise from it alone.
   - Netboot an initramfs kernel over TFTP to get a root shell without touching flash.
   - Back up flash, then build your own patched bootloader from your own bootloader dump — no prebuilt bootloader binary is shipped, see the guide's §5a.
   - Flash [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed.bin|vmg8825-t50-era-signed.bin]] to the main partition — the factory partition is an automatic fallback, this step is safe to retry.
+  - Format the settings partition (''rootfs_data'') once, with ''firmware/vmg8825-t50-rootfs-data.bin'' (guide §6a). Skip it and every reboot comes back with factory settings.
   - Flash the bootloader you just built — **this one write has no fallback**, back up first.
   - <color red>**Finish by reflashing**</color> [[https://github.com/koenieee/VMG8825-T50-Openwrt-support/blob/main/firmware/vmg8825-t50-era-signed-locked.bin|vmg8825-t50-era-signed-locked.bin]] so the bootloader partition (mtd1) ends up **read-only** again.
 

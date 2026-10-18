@@ -256,6 +256,13 @@ the constants for your device.
 Do **not** use `ATUR` for either write — it silently stops writing NAND
 after a device's first successful flash.
 
+
+Once OpenWrt has booted from MAIN, format the settings partition once:
+run `vmg8825-format-overlay` and reboot (main guide §6a/§8b; images from
+2026-10-18 on). This route never runs a RAM Linux shell, so nothing else
+does that step for you, and without it every reboot comes back with
+factory settings.
+
 ## Status of this route
 
 The MAIN (mtd3) half of this is proven on hardware. The bootloader (mtd0)

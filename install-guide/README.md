@@ -129,8 +129,9 @@ Software (Linux assumed below; on Windows, do this inside WSL):
   `sudo apt install screen`), `minicom`, or `picocom` all work.
 - `python3` and `atftp` (`sudo apt install atftp`) if you're using the
   scripted route; just `atftp` if you're doing everything by hand.
-- A C compiler (`cc`/`gcc`) to build the one password-derivation tool.
-- This repo cloned, with `tools/atenv3/atenv3_passwd` built:
+- This repo cloned. `tools/atenv3/atenv3_passwd` ships as a static
+  x86-64 binary that runs on any 64-bit x86 Linux. Only if it does not
+  run for you (other CPU architecture), build it with a C compiler:
   ```
   cc -o tools/atenv3/atenv3_passwd tools/atenv3/atenv3_passwd.c
   ```
@@ -139,6 +140,8 @@ Software (Linux assumed below; on Windows, do this inside WSL):
     §4. Generic (no personal data), works on any T50 matching the
     precondition above. (Building your own is only needed if you've
     changed kernel config — see §4a.)
+  - `firmware/vmg8825-t50-rootfs-data.bin` — the empty settings
+    partition image for §6a.
   - `firmware/vmg8825-t50-era-signed.bin` — the OpenWrt build for MAIN
     (mtd3). Both WiFi APs come up enabled as open `OpenWrt` networks; no SSID/passphrase of your own is baked in.
   - `bldr-patch/patch_stage2_rsa_bypass.py` and

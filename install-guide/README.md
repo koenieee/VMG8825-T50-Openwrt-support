@@ -85,17 +85,32 @@ see `BOOTLOADER-PATCH.md`) rather than silently corrupt the wrong
 location. Reproducing the patch for a different version is not covered
 by this guide.
 
-One other version has since been reported working by a tester, all the
-way to OpenWrt booting from MAIN:
+Two other banners have since been reported working by testers, all the
+way to OpenWrt booting from MAIN and surviving a reboot:
 ```
 EN751627 at Tue Feb 26 19:13:00 CST 2019 version 1.1 free bootbase
 ...
 ZyXEL zloader v1.4.2 (02/26/2019 - 19:12:56)
 ```
-That is one report, not something this project has verified itself. Since
-the §5a scripts check the original instruction bytes at both patch sites
-before changing anything, running them on an unlisted version is safe to
-*try*: a mismatch stops with `FATAL` before any output file is written.
+```
+EN751627 at Fri May 15 15:20:05 CST 2020 version 1.1 free bootbase
+...
+ZyXEL zloader v1.4.4 (05/15/2020 - 15:20:04)
+```
+The second is the same `v1.4.4` as the target banner but a different build
+date, and both §5a patch sites matched byte-for-byte — so the exact
+timestamp in the banner does not matter, the version string and matching
+patch bytes do. These are tester reports, not something this project has
+verified itself. Since the §5a scripts check the original instruction
+bytes at both patch sites before changing anything, running them on an
+unlisted version is safe to *try*: a mismatch stops with `FATAL` before
+any output file is written.
+
+> **If LZMA validation fails** (`xz`/Python report "corrupt input" when the
+> §5a scripts recompress stage2): this is a known strictness quirk in some
+> liblzma builds and is handled — the scripts now verify the repacked
+> stream bounded to its known size, which never trips the false positive.
+> No `7-Zip`/`p7zip` workaround is needed.
 
 ## Before you start
 

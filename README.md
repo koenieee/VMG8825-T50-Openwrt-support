@@ -256,7 +256,7 @@ module for a different smart-plug API.
 | DSL | ADSL2+/VDSL2 (vendor `mt7510` module) — no mainline driver, not supported |
 | USB | 1x USB2.0 + 1x USB3.0, mass storage tested |
 | Serial console | 115200 8N1, CR-only, `/dev/ttyUSB0`, 3.3V header. No JTAG. |
-| Bootloader | Zyxel **zloader v1.4.4** (2021-01-04), legacy TRX+RSA, LZMA kernel. v1.4.2 (2019-02-26) reported working by a tester |
+| Bootloader | Zyxel **zloader v1.4.4** (2021-01-04), legacy TRX+RSA, LZMA kernel. v1.4.4 (2020-05-15) and v1.4.2 (2019-02-26) also reported working by testers |
 
 Source: https://openwrt.org/inbox/toh/zyxel/zyxel_vmg8825-t50
 

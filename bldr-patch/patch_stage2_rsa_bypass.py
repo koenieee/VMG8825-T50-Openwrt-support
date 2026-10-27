@@ -77,7 +77,15 @@ def main():
     if len(recomp) > budget:
         sys.exit("FATAL: recompressed stage2 does not fit before the trailer, abort")
 
-    redec = lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(recomp)
+    # Bound the verify to exactly len(patched) bytes. Python's FORMAT_RAW
+    # LZMA1 stream carries an end-of-stream marker; once wrapped in an ALONE
+    # header that also states a known uncompressed size, some liblzma builds
+    # (and the `xz` CLI) flag that trailing marker as "corrupt input" even
+    # though every decoded byte is correct -- a tester hit exactly this and
+    # had to fall back to 7-Zip. Stopping at the known size never touches the
+    # marker, so this is portable and matches what the zloader itself does.
+    redec = lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(
+        recomp, max_length=len(patched))
     if redec != bytes(patched):
         sys.exit("FATAL: internal roundtrip mismatch, abort (this indicates "
                   "a bug in this script, not your input file -- please report it)")

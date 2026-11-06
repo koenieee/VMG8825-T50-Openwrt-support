@@ -95,17 +95,17 @@ that flashes over another unit's real board-info block on the
 highest-risk, no-fallback write in this project was the wrong trade-off.
 
 **You build your own patched bootloader from your own mtd0 dump.** It's
-two Python scripts run against a file you dump yourself (§5a of the
+one Python script run against a file you dump yourself (§5a of the
 install guide), and it means:
 
 - Your unit's own MAC/serial/board-info block is never touched — only
-  the two known code offsets are patched (see the per-unit section
-  below).
-- The scripts hard-assert the original bytes at each patch offset before
-  writing anything and refuse to run if they don't match, so a zloader
-  build that differs from the one this project targets (see the install
-  guide's precondition section) fails loudly instead of silently
-  corrupting the wrong location.
+  the known code gate(s) are patched (see the per-unit section below).
+- The patcher locates the gates by landmark (the checker's own error
+  strings) rather than by a fixed offset, so it adapts across zloader
+  builds — including ones where the offset moved or the RSA gate is
+  absent. If it cannot locate a gate cleanly it refuses to write anything,
+  so a truly unknown layout fails safe instead of corrupting the wrong
+  location.
 
 ## Per-unit board-info block
 
@@ -119,30 +119,51 @@ partition table this project documents elsewhere (`romfile`/`reservearea`
 etc., which hold additional per-unit data of their own).
 
 Because you always patch your own dump (see above), this block is never
-touched by the process in this repo — `patch_stage2_rsa_bypass.py` and
-`patch_stage2_crc_bypass.py` only ever rewrite the two known code
-offsets inside the compressed stage2 blob, copying everything else
-(including this board-info block) through unmodified. Whether the
+touched by the process in this repo — `patch_stage2.py` only ever rewrites
+the known code gate(s) inside the compressed stage2 blob, copying
+everything else (including this board-info block) through unmodified.
+Whether the
 zloader validates or checksums this block at boot at all (as opposed to
 just reporting it verbatim via `ATSH`) has not been tested — it's simply
 never touched here.
 
 ## Building your own patched bootloader
 
-The build scripts, run against a raw dump of **your own** mtd0/bootloader
-partition (`install-guide/README.md` §5a):
+`bldr-patch/patch_stage2.py`, run against a raw dump of **your own**
+mtd0/bootloader partition (`install-guide/README.md` §5a):
 
-- `bldr-patch/patch_stage2_rsa_bypass.py <your-mtd0-dump.bin>` — applies
-  the RSA patch. Writes `bldr-patch/mtd0-rsa-bypass-patched.bin`.
-- `bldr-patch/patch_stage2_crc_bypass.py <rsa-patched-dump.bin>` —
-  applies the CRC patch on top. Writes
-  `bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin` — this is the file you
-  flash in §7.
+```sh
+python3 bldr-patch/patch_stage2.py your-mtd0-dump.bin --dry-run   # report only
+python3 bldr-patch/patch_stage2.py your-mtd0-dump.bin \
+    -o bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin             # this is the file you flash in §7
+```
 
-Both scripts hard-assert the original bytes at their patch offset before
-writing anything, and refuse to run if they don't match — so a different
-zloader build fails loudly instead of silently corrupting the wrong
-location. If that happens, the offsets in the table above do not apply
-to your build (see the precondition section in `install-guide/README.md`
-— this is out of scope for this guide) and finding the new ones requires
-disassembling your own dump; that process isn't documented here.
+How it finds the gates without hard-coded offsets: the stage2 boot checker
+prints human-readable failure strings (`... main tclinux.bin crc check
+error`, `Wrong image hash value`). The script finds each string in the
+decompressed stage2, computes its load VA (base `0x83fb0000`), finds the
+`lui/addiu` that materialises that VA into `$a0` (the failure-print setup),
+and takes the `beq` guarding it — for CRC a `beq $sX,$v0,ok` where `$v0`
+holds the freshly computed JAMCRC. It neutralises the guard by zeroing both
+register fields (`beq $zero,$zero,imm`, same immediate → same target), then
+recompresses and roundtrip-verifies.
+
+This adapts across builds where the old fixed-offset scripts failed:
+
+- **Moved offsets.** The landmark is the error string, not an address. A
+  tester's v1.4.4 (01/14/2020) build moved the CRC gate from `0x577c` to
+  `0x576c` and changed its register (`$s4`→`$s3`); the old
+  `patch_stage2_rsa_bypass.py` stopped with "FATAL: patch site moved".
+- **CRC-only builds.** If the `Wrong image hash value` string is absent the
+  build has no RSA gate — the script reports **CRC-only** and patches just
+  the CRC gate. (That same v1.4.4 01/14/2020 build.)
+- **Idempotent.** An already-patched dump is recognised and left alone.
+- **MAIN only.** The SLAVE image's gates are never touched, so SLAVE stays
+  a pristine OEM recovery slot.
+
+Safe by default: if a landmark can't be found, or the guard doesn't look
+neutralisable, it writes nothing and tells you to disassemble your own
+dump first. It never touches a device.
+
+The old `patch_stage2_rsa_bypass.py` + `patch_stage2_crc_bypass.py` pair is
+kept in `bldr-patch/` as a fixed-offset, single-build reference fallback.

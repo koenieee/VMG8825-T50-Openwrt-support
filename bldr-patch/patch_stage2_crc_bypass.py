@@ -3,6 +3,10 @@
 top of the already-applied RSA bypass patch
 (`bldr-patch/patch_stage2_rsa_bypass.py`).
 
+DEPRECATED: fixed-offset, single-build. Use the build-independent
+`patch_stage2.py`, which locates the gate by landmark and also handles builds
+where the offset moved or the RSA gate is absent. Kept for reference.
+
 Found via headless Ghidra decompilation of the decompressed stage2 blob
 (loaded at VA 0x83fb0000) of the shared check function `FUN_83fb5384`
 (param_1==0 -> MAIN, param_1==1 -> SLAVE):

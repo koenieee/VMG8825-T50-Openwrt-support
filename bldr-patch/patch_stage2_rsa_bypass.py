@@ -2,6 +2,13 @@
 """Patch the kernel/TRX RSA-SHA256 signature compare in the T50 zloader stage2
 to an unconditional pass, and repack it back into a full mtd0-sized image.
 
+DEPRECATED: this script hard-codes the patch offset of ONE zloader build and
+stops with "FATAL: patch site moved" on any other -- a tester hit exactly this
+on v1.4.4 (01/14/2020), which also turned out to have no RSA gate at all. Use
+the build-independent `patch_stage2.py` instead: it locates the CRC and RSA
+gates by landmark, reports CRC-only vs CRC+RSA, and does both in one pass.
+Kept for reference only.
+
 Input: a raw 256KB dump of YOUR OWN device's mtd0/bootloader partition
 (see install-guide/README.md SS5a for how to take it). This project ships
 no prebuilt bootloader binary -- you always start from your own dump so

@@ -78,15 +78,14 @@ EN751627 at Mon Jan 4 14:53:36 CST 2021 version 1.1 free bootbase
 ZyXEL zloader v1.4.4 (01/04/2021 - 14:53:34)
 ```
 Get to this banner via the serial console (see §2). **If your banner
-differs in any way, stop** — the two code offsets §5a's patch scripts
-use are byte-for-byte specific to this exact zloader build and asserting
-against them on a different one will fail loudly (which is the point —
-see `BOOTLOADER-PATCH.md`) rather than silently corrupt the wrong
-location. Reproducing the patch for a different version is not covered
-by this guide.
+differs, the §5a patcher adapts automatically — it locates the gates by
+landmark (the checker's own error strings), not by a fixed offset, so a
+moved offset or a missing RSA gate is handled rather than a hard failure.
+It still refuses to write if it cannot find a gate cleanly, so a truly
+unknown layout fails safe instead of corrupting the wrong location.
 
-Two other banners have since been reported working by testers, all the
-way to OpenWrt booting from MAIN and surviving a reboot:
+Several banners have been reported working by testers, all the way to
+OpenWrt booting from MAIN and surviving a reboot:
 ```
 EN751627 at Tue Feb 26 19:13:00 CST 2019 version 1.1 free bootbase
 ...
@@ -97,20 +96,24 @@ EN751627 at Fri May 15 15:20:05 CST 2020 version 1.1 free bootbase
 ...
 ZyXEL zloader v1.4.4 (05/15/2020 - 15:20:04)
 ```
-The second is the same `v1.4.4` as the target banner but a different build
-date, and both §5a patch sites matched byte-for-byte — so the exact
-timestamp in the banner does not matter, the version string and matching
-patch bytes do. These are tester reports, not something this project has
-verified itself. Since the §5a scripts check the original instruction
-bytes at both patch sites before changing anything, running them on an
-unlisted version is safe to *try*: a mismatch stops with `FATAL` before
-any output file is written.
+```
+EN751627 at Tue Jan 14 21:13:35 CST 2020 version 1.1 free bootbase
+...
+ZyXEL zloader v1.4.4 (01/14/2020 - 21:13:32)
+```
+The exact timestamp in the banner does not matter — the version string and
+the gate layout do. The last one is notable: that build has **no RSA gate
+at all** (only the CRC check), and its CRC gate had moved to a different
+offset and register. The old fixed-offset scripts failed on it with
+`FATAL: patch site moved`; the build-independent `patch_stage2.py` (§5a)
+handles it. These are tester reports, not something this project has
+verified on that exact build itself.
 
 > **If LZMA validation fails** (`xz`/Python report "corrupt input" when the
-> §5a scripts recompress stage2): this is a known strictness quirk in some
-> liblzma builds and is handled — the scripts now verify the repacked
-> stream bounded to its known size, which never trips the false positive.
-> No `7-Zip`/`p7zip` workaround is needed.
+> §5a patcher recompresses stage2): this is a known strictness quirk in some
+> liblzma builds and is handled — the patcher verifies the repacked stream
+> bounded to its known size, which never trips the false positive. No
+> `7-Zip`/`p7zip` workaround is needed.
 
 ## Before you start
 
@@ -159,11 +162,12 @@ Software (Linux assumed below; on Windows, do this inside WSL):
     partition image for §6a.
   - `firmware/vmg8825-t50-era-signed.bin` — the OpenWrt build for MAIN
     (mtd3). Both WiFi APs come up enabled as open `OpenWrt` networks; no SSID/passphrase of your own is baked in.
-  - `bldr-patch/patch_stage2_rsa_bypass.py` and
-    `bldr-patch/patch_stage2_crc_bypass.py` — the two scripts that turn a
-    dump of **your own** mtd0/bootloader partition into the patched
+  - `bldr-patch/patch_stage2.py` — the build-independent patcher that turns
+    a dump of **your own** mtd0/bootloader partition into the patched
     bootloader you flash in §7. This project ships no prebuilt bootloader
-    binary — see §5a for why and how.
+    binary — see §5a for why and how. (The older `patch_stage2_rsa_bypass.py`
+    + `patch_stage2_crc_bypass.py` pair is kept as a fixed-offset reference
+    fallback.)
 
 ## 2. Wire up serial and confirm the console
 
@@ -310,8 +314,16 @@ vmg8825-backup-flash /mnt
 ```
 That writes one `mtd-<label>.bin` per partition, reads each one twice to
 make sure the two reads agree, and puts the checksums in
-`/mnt/md5sums.txt`. It is in the RAM-boot kernel from 2026-10-18 on. By
-hand it goes like this:
+`/mnt/md5sums.txt`. It is in the RAM-boot kernel from 2026-10-18 on.
+
+> **If `vmg8825-backup-flash` is "not found":** older RAM-boot images, and
+> some netboot stubs, do not include it (nor `stat`). Use the by-hand
+> `dd`/`nanddump` commands below instead, or copy `vmg8825-backup-flash`
+> onto your USB stick and run it from there. Where a later step uses
+> `stat -c%s <file>` and `stat` is missing on the device, run that on your
+> PC against the same file to get the byte count.
+
+By hand it goes like this:
 
 Note the `mtdN` number next to each label. Mount the USB stick and back
 up the `bootloader`, `tclinux` (MAIN), and `tclinux_slave` partitions
@@ -330,6 +342,17 @@ Copy these off the device onto your PC before continuing — the
 `bootloader` one goes straight into §5a next; all three are your only
 recovery path if a write lands in the wrong place.
 
+> **Also take one whole-flash dump, not just these partitions.** The WiFi
+> calibration data sits at a per-unit offset that the device tree can only
+> guess, and on some units it lands inside `rootfs_data`, which §6a erases.
+> A tester recovered their real calibration — and fixed radios stuck at
+> ~6–8 dBm — **only** because they had a full dump. Take one:
+> ```
+> nanddump -f /mnt/mtd-full.bin /dev/mtd0   # whole 256 MiB device, a few minutes
+> ```
+> Keep `mtd-full.bin` off-device. If your radios come up weak after install,
+> see the WiFi section for how to extract calibration from it.
+
 ## 5a. Build your own patched bootloader
 
 This project ships no prebuilt bootloader binary — you build one now,
@@ -340,36 +363,48 @@ couple of unidentified codes — see `BOOTLOADER-PATCH.md`) completely
 untouched: the scripts below only ever rewrite two known code offsets,
 copying everything else through unmodified.
 
-Run both commands **from the repo root, on your PC**, not the router
-(the paths below assume that):
+Run this **from the repo root, on your PC**, not the router (the paths
+below assume that). First a dry run — it writes nothing, it just reports
+which gates it found and whether your build is **CRC-only** or **CRC+RSA**:
 
 ```sh
-python3 bldr-patch/patch_stage2_rsa_bypass.py /path/to/mtd-bootloader-backup.bin
+python3 bldr-patch/patch_stage2.py /path/to/mtd-bootloader-backup.bin --dry-run
 ```
-Expect:
+Expect something like:
 ```
-source: /path/to/mtd-bootloader-backup.bin
-recompressed stage2: ... bytes (budget ..., orig ...)
-wrote bldr-patch/mtd0-rsa-bypass-patched.bin (262144 bytes)
-patch site VA 0x83fb57f4: 10400121 -> 10000121
+source: /path/to/mtd-bootloader-backup.bin  (stage2 decompressed 0x3c6f0 bytes)
+  CRC gate @0x0577c (VA 0x83fb577c): 12820006 -> 10000006 (beq -> unconditional, same target)
+  RSA gate @0x057f4 (VA 0x83fb57f4): 10400121 -> 10000121 (beq -> unconditional, same target)
+build type: CRC+RSA
+dry-run: no file written
 ```
-An `AssertionError`/`FATAL` here instead means the patch offset didn't
-match — almost always the bootloader banner precondition wasn't met, or
-`/path/to/mtd-bootloader-backup.bin` isn't a full 256KB dump. Do not
-continue; go back and re-check §5/the precondition section instead of
-re-running with `--force` (there is no such flag, on purpose).
+Some builds print `build type: CRC-only (no RSA gate found)` and only a CRC
+gate — that is expected on bootloaders that carry no RSA check (e.g. the
+v1.4.4 01/14/2020 "free bootbase"), and is fine. If instead it says it
+**could not locate the MAIN CRC gate**, stop: do not flash anything, and
+re-check §5/the precondition. The script refuses to guess rather than
+corrupt the wrong offset.
+
+Then write the patched bootloader (keep this exact output name — §7 uses
+it):
 
 ```sh
-python3 bldr-patch/patch_stage2_crc_bypass.py bldr-patch/mtd0-rsa-bypass-patched.bin
+python3 bldr-patch/patch_stage2.py /path/to/mtd-bootloader-backup.bin \
+    -o bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin
 ```
-Expect:
-```
-source: bldr-patch/mtd0-rsa-bypass-patched.bin
-RSA patch confirmed present @0x57f4: 10000121
-CRC patch applied @0x577c: 12820006 -> 10000006
-recompressed stage2: ... bytes (budget ..., orig ...)
-wrote bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin (262144 bytes)
-```
+
+> **🧪 New, not yet hardware-tested — testers wanted.** The old two-step
+> `patch_stage2_rsa_bypass.py` + `patch_stage2_crc_bypass.py` pair only
+> matched one exact zloader build and broke on others (moved offset, or no
+> RSA gate). This single `patch_stage2.py` finds the gates by landmark
+> instead of fixed offset, so it should work across builds — but it has
+> been verified only against a known-good dump in software, **not yet
+> flashed to real hardware end-to-end.** If you run it: do a full `mtd0`
+> backup first (§5), diff the output against your dump to confirm only the
+> reported gate word(s) changed, and **please report success or failure
+> (with your exact bootloader banner) in a GitHub issue.** Until there are
+> hardware reports, treat §7 as higher-risk than the rest of this guide.
+> The old scripts are still in `bldr-patch/` as a reference fallback.
 
 `bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin` is the file you flash in
 §7. Sanity-check its size (a failed run can leave a 0-byte or truncated

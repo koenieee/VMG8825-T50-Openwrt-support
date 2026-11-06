@@ -393,18 +393,19 @@ python3 bldr-patch/patch_stage2.py /path/to/mtd-bootloader-backup.bin \
     -o bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin
 ```
 
-> **🧪 New, not yet hardware-tested — testers wanted.** The old two-step
+> **✅ Hardware-confirmed.** The old two-step
 > `patch_stage2_rsa_bypass.py` + `patch_stage2_crc_bypass.py` pair only
 > matched one exact zloader build and broke on others (moved offset, or no
 > RSA gate). This single `patch_stage2.py` finds the gates by landmark
-> instead of fixed offset, so it should work across builds — but it has
-> been verified only against a known-good dump in software, **not yet
-> flashed to real hardware end-to-end.** If you run it: do a full `mtd0`
-> backup first (§5), diff the output against your dump to confirm only the
-> reported gate word(s) changed, and **please report success or failure
-> (with your exact bootloader banner) in a GitHub issue.** Until there are
-> hardware reports, treat §7 as higher-risk than the rest of this guide.
-> The old scripts are still in `bldr-patch/` as a reference fallback.
+> instead of fixed offset, so it works across builds. A tester on a zloader
+> **v1.4.4 (01/14/2020)** build (CRC-only, no RSA gate, CRC gate at a moved
+> offset where the old RSA script died) ran it and got a **byte-identical**
+> result to their own known-good hand-made patch, then flashed it and booted
+> successfully. Still, always do a full `mtd0` backup first (§5) and diff the
+> output against your dump to confirm only the reported gate word(s) changed.
+> If your build differs, **please report your exact bootloader banner and the
+> result in a GitHub issue.** The old scripts remain in `bldr-patch/` as a
+> fixed-offset reference fallback.
 
 `bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin` is the file you flash in
 §7. Sanity-check its size (a failed run can leave a 0-byte or truncated

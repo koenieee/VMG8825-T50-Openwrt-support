@@ -289,8 +289,11 @@ full OpenWrt checkout:
   `package/kernel/econet-eth/`, applied on top of the upstream checkout
   (see its own README for the exact copy command).
 - `bldr-patch/` — the flashing toolchain (`dev_flash_cycle.py`,
-  `power_cycle.py`) and the bootloader-patch build scripts
-  (`patch_stage2_rsa_bypass.py`, `patch_stage2_crc_bypass.py`).
+  `power_cycle.py`) and the bootloader patcher `patch_stage2.py`, which
+  finds the CRC/RSA gates by landmark so it works across zloader builds
+  (hardware-confirmed on v1.4.4 01/14/2020). The older
+  `patch_stage2_rsa_bypass.py` + `patch_stage2_crc_bypass.py` pair is a
+  fixed-offset reference fallback.
 - `build_era_trx.py` — wraps a slim OpenWrt `.trx` into the era-0x174
   header this board's zloader expects, with a self-check.
 - `board-files/` — DTS/image scaffolding and the era-header template
@@ -304,6 +307,10 @@ full OpenWrt checkout:
   `tools/sync-overlay.sh`, `tools/flash-openwrt.sh` — build from source
   (on the host or in a container), keep the overlay and the OpenWrt tree
   in step, and upgrade a running router over SSH.
+- `tools/extract-wifi-caldata.py`, `tools/find-wifi-caldata-offset.sh` —
+  read-only WiFi-calibration helpers for boards whose MT7615 caldata
+  sits at a non-default flash offset (weak radios); see `tools/README.md`
+  and `install-guide/README.md` §8d.
  - `firmware/` — the prebuilt artifacts you actually flash:
    `vmg8825-t50-era-signed.bin` (plain OpenWrt build, MAIN/mtd3) and
    `vmg8825-t50-era-signed-locked.bin` (same build, but mtd1 is read-only

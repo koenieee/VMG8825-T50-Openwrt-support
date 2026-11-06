@@ -15,3 +15,7 @@ bldr-patch/*.log
 
 # tools/build-firmware.sh output
 out/
+
+# Per-unit WiFi calibration extracted from a user dump (MAC + trim) — never commit
+wifi-caldata-out/
+*-unit-eeprom.dtsi

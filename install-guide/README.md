@@ -595,6 +595,54 @@ yourself:
 sed -i '\|/targets/econet/|d' /etc/apk/repositories.d/distfeeds.list
 ```
 
+### 8d. WiFi works but both radios are weak (~6–8 dBm)
+
+Symptom: `iwinfo` shows Tx-Power around 6–8 dBm on both radios, clients see
+a weak signal, and every channel is capped at the same flat value. The
+cause is usually that this unit's MT7615 calibration data sits at a
+different flash offset than the device tree assumes (it reads from a fixed
+`wifi-caldata` offset, and that offset is not identical on every unit), so
+each radio loads the wrong card's calibration.
+
+1. **Find where your calibration actually is.** On the device:
+   ```
+   sh tools/find-wifi-caldata-offset.sh /dev/mtd0
+   ```
+   It scans the flash for the two MT7615 blocks and prints their offsets. If
+   it says they **match** the hard-coded offsets, the weak TX is something
+   else (country code, channel width — see §9). If it says they **differ**,
+   continue.
+
+2. **Extract your unit's real calibration** (on your PC, from the
+   whole-flash dump you took in §5 — `mtd-full.bin`):
+   ```
+   python3 tools/extract-wifi-caldata.py mtd-full.bin -o wifi-caldata-out
+   ```
+   This writes `wifi-caldata-out/<board>-unit-eeprom.dtsi` with each radio's
+   calibration inlined. **It embeds this unit's MAC and per-chain trim — do
+   not commit it or flash it onto a different router.**
+
+3. **Wire it into the board DTS and rebuild.** In
+   `openwrt-overlay/target/linux/econet/dts/en751627_zyxel_vmg8825-t50.dts`,
+   add near the top:
+   ```
+   #include "en751627_zyxel_vmg8825-t50-unit-eeprom.dtsi"
+   ```
+   and in each wifi node replace the two `nvmem-cells`/`nvmem-cell-names`
+   lines with the inline blob (mt76 checks `mediatek,eeprom-data` before
+   nvmem, so the two are mutually exclusive):
+   ```
+   /* &slot0 wifi@0,0: */  mediatek,eeprom-data = /bits/ 8 <UNIT_EEPROM_RADIO0>;
+   /* &slot1 wifi@0,0: */  mediatek,eeprom-data = /bits/ 8 <UNIT_EEPROM_RADIO1>;
+   ```
+   Then `make target/linux/clean` and rebuild (the DTS change may not be
+   picked up incrementally). After flashing that build, both radios should
+   reach their regulatory ceiling (20 dBm / 23 dBm under GB).
+
+See `tools/README.md` for details. This per-unit path is the one a tester
+verified on hardware; a generic signature-scan-at-boot that would avoid the
+rebuild entirely is still open.
+
 ## 9. Secure WiFi
 
 Both radios come up enabled on first boot, as open APs (SSID `OpenWrt`,

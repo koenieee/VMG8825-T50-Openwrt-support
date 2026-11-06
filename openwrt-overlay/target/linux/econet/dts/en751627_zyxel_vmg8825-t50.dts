@@ -331,6 +331,15 @@
  * `mediatek,eeprom-data = /bits/ 8 <MT7615_GENERIC_EEPROM>;` (removing
  * its nvmem-cells property) rather than relying on any automatic
  * runtime fallback -- there isn't one.
+ *
+ * Per-unit note: the nvmem offsets above (radio0 @0xeae0000,
+ * radio1 @0xeb00000) are NOT the same on every unit -- a tester's had
+ * them one 128 KiB block earlier, which made both radios come up at
+ * ~6-8 dBm. If a unit's radios are weak, run
+ * tools/find-wifi-caldata-offset.sh on the device to locate its real
+ * offsets, then tools/extract-wifi-caldata.py on a full-flash dump to
+ * generate a per-unit *-unit-eeprom.dtsi (inline mediatek,eeprom-data)
+ * and #include it here. See install-guide/README.md S8d + tools/README.md.
  */
 &pcie0 {
 	status = "okay";

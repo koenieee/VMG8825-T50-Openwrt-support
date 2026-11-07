@@ -4,11 +4,12 @@
 # Automatic Wi-Fi Calibration Scanner and Driver Rebinding Tool for Zyxel VMG8825-T50
 #
 # Scans raw flash by signature to detect the true per-unit MT7615 calibration offsets.
-# If the offsets match the device tree defaults (0xeae0000 / 0xeb00000), it takes no
-# action. If the calibration sits at shifted offsets (e.g. 128 KiB earlier), it extracts
-# the exact 19880-byte calibration blobs to /lib/firmware/mediatek/ and triggers a live
-# PCIe driver rebind so the radios load their factory calibration without needing a custom
-# per-unit devicetree rebuild.
+# - If the offsets match the device tree defaults (0xeae0000 / 0xeb00000) and data is valid,
+#   no override is needed (loaded natively via nvmem).
+# - If the calibration sits at shifted offsets (e.g. 128 KiB earlier), it extracts the
+#   calibrated blobs to /lib/firmware/mediatek/ and triggers a live driver rebind.
+# - If no valid calibration is found on flash (flash erased / blank), it falls back to
+#   deploying the generic MT7615 calibration blob so Wi-Fi does not get stuck at 5-6 dBm.
 #
 # Usage:
 #   vmg8825-wifi-caldata check        # Scan and report offsets vs DTS
@@ -25,6 +26,7 @@ END="0x10000000"
 STRIDE=$((0x20000))     # 128 KiB eraseblocks
 OFF_F3=$((0xf3))        # Byte 0xf3: 0x00 on 2.4 GHz TSSI, non-zero on 5 GHz external-PA
 EEPROM_LEN=19880
+GENERIC_BIN="/lib/firmware/mediatek/mt7615e_generic.bin"
 
 # Reference offsets hardcoded in board DTS
 DT_R0=$((0xeae0000))
@@ -38,37 +40,48 @@ if [ ! -e "$DEV" ]; then
 	fi
 fi
 
-rdhex() {
-	dd if="$DEV" bs=1 skip="$1" count="$2" 2>/dev/null | od -An -tx1 | tr -d ' \n'
-}
-
 scan_flash() {
 	[ -e "$DEV" ] || { echo "FATAL: flash device $DEV not found" >&2; return 1; }
 
-	local start=$((START))
-	local end=$((END))
-	local off=$start
+	local blk_start=$((START / STRIDE))
+	local blk_end=$((END / STRIDE))
+	local blk=$blk_start
 
 	r0off=""
 	r1off=""
 
-	while [ "$off" -lt "$end" ]; do
-		sig=$(rdhex "$off" 2)
+	while [ "$blk" -lt "$blk_end" ]; do
+		sig=$(dd if="$DEV" bs="$STRIDE" count=1 skip="$blk" 2>/dev/null | hexdump -v -n 2 -e '1/1 "%02x"')
 		if [ "$sig" = "1576" ]; then
-			f3=$(rdhex $((off + OFF_F3)) 1)
+			off=$((blk * STRIDE))
+			f3=$(dd if="$DEV" bs=1 skip=$((off + OFF_F3)) count=1 2>/dev/null | hexdump -v -n 1 -e '1/1 "%02x"')
 			if [ "$f3" = "00" ]; then
 				[ -z "$r0off" ] && r0off=$off
 			else
 				[ -z "$r1off" ] && r1off=$off
 			fi
 		fi
-		off=$((off + STRIDE))
+		blk=$((blk + 1))
 	done
 
 	if [ -z "$r0off" ] || [ -z "$r1off" ]; then
 		return 2
 	fi
 	return 0
+}
+
+deploy_generic() {
+	if [ -f "$GENERIC_BIN" ]; then
+		echo "vmg8825-wifi-caldata: deploying generic MT7615 calibration blob..."
+		mkdir -p /lib/firmware/mediatek
+		cp "$GENERIC_BIN" /lib/firmware/mediatek/mt7615e_eeprom_0000:01:00.0.bin
+		cp "$GENERIC_BIN" /lib/firmware/mediatek/mt7615e_eeprom_0001:01:00.0.bin
+		sync
+		return 0
+	else
+		echo "vmg8825-wifi-caldata: generic calibration blob $GENERIC_BIN not found!" >&2
+		return 1
+	fi
 }
 
 do_rebind() {
@@ -92,7 +105,10 @@ case "$CMD" in
 check)
 	echo "Scanning $DEV for MT7615 calibration blocks..."
 	if ! scan_flash; then
-		echo "ERROR: Could not locate both MT7615 calibration blocks (sig 15 76)." >&2
+		echo "WARNING: Could not locate both MT7615 calibration blocks (sig 15 76) on flash."
+		if [ -f "$GENERIC_BIN" ]; then
+			echo "Generic calibration fallback is available at $GENERIC_BIN."
+		fi
 		exit 1
 	fi
 
@@ -109,7 +125,11 @@ check)
 extract)
 	echo "Scanning $DEV for MT7615 calibration blocks..."
 	if ! scan_flash; then
-		echo "ERROR: Could not locate both MT7615 calibration blocks." >&2
+		echo "Flash scan found no valid factory calibration blocks. Attempting generic fallback..."
+		if deploy_generic; then
+			echo "Generic calibration deployed successfully."
+			exit 0
+		fi
 		exit 1
 	fi
 
@@ -135,8 +155,13 @@ auto)
 	fi
 
 	if ! scan_flash; then
-		echo "vmg8825-wifi-caldata: signature scan failed or incomplete, keeping DTS nvmem defaults" >&2
-		touch "$STAMP"
+		echo "vmg8825-wifi-caldata: no factory calibration found on flash; deploying generic fallback" >&2
+		if deploy_generic; then
+			do_rebind
+			echo "STATUS=GENERIC_FALLBACK" > "$STAMP"
+		else
+			echo "STATUS=SCAN_FAILED_NO_FALLBACK" > "$STAMP"
+		fi
 		exit 0
 	fi
 

@@ -271,7 +271,7 @@
 		partition@eae0000 {
 			label = "wifi-caldata";
 			reg = <0xeae0000 0x40000>;
-			read-only;
+			/* Writable so caldata can be restored to flash if needed */
 
 			nvmem-layout {
 				compatible = "fixed-layout";

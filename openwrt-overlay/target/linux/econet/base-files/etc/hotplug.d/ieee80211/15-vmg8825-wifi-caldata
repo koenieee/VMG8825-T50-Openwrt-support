@@ -1,0 +1,15 @@
+#!/bin/sh
+. /lib/functions.sh
+
+[ "$ACTION" = "add" ] || exit 0
+[ "$(board_name)" = "zyxel,vmg8825-t50" ] || exit 0
+
+STAMP=/etc/vmg8825-wifi-caldata.done
+[ -f "$STAMP" ] && exit 0
+
+# Run automated signature scan and driver rebind if shifted calibration is detected
+if [ -x /sbin/vmg8825-wifi-caldata ]; then
+	/sbin/vmg8825-wifi-caldata auto
+fi
+
+exit 0

@@ -142,11 +142,12 @@ Hardware:
 - An Ethernet cable from your PC directly to the router's LAN port (not
   through a switch/other router — TFTP in §4 needs a direct link).
 
-Software (Linux assumed below; on Windows, do this inside WSL):
+Software (Linux assumed below; macOS and Windows WSL work too):
 - A serial terminal program: `screen` (used in the examples below,
   `sudo apt install screen`), `minicom`, or `picocom` all work.
-- `python3` and `atftp` (`sudo apt install atftp`) if you're using the
-  scripted route; just `atftp` if you're doing everything by hand.
+- `python3` (standard library only; the repo includes `tools/tftp_client.py`,
+  so installing `atftp` is optional). If preferred, `atftp` (`sudo apt install atftp`)
+  is also supported.
 - This repo cloned. `tools/atenv3/atenv3_passwd` ships as a static
   x86-64 binary that runs on any 64-bit x86 Linux. Only if it does not
   run for you (other CPU architecture), build it with a C compiler:
@@ -267,6 +268,10 @@ configured; otherwise pull and reapply power by hand.
 > ```
 > then push the file from your PC — the router is the TFTP server here:
 > ```
+> # Using the built-in zero-dependency Python TFTP client:
+> python3 tools/tftp_client.py 192.168.1.1 firmware/vmg8825-t50-initramfs-kernel.bin
+>
+> # Or using atftp if installed:
 > atftp --put --local-file firmware/vmg8825-t50-initramfs-kernel.bin \
 >       --remote-file vmg8825-t50-initramfs-kernel.bin 192.168.1.1
 > ```
@@ -604,6 +609,18 @@ cause is usually that this unit's MT7615 calibration data sits at a
 different flash offset than the device tree assumes (it reads from a fixed
 `wifi-caldata` offset, and that offset is not identical on every unit), so
 each radio loads the wrong card's calibration.
+
+**Automatic Resolution (On Device):**
+Images from this tree include `/sbin/vmg8825-wifi-caldata` and an automatic
+hotplug hook at `/etc/hotplug.d/ieee80211/15-vmg8825-wifi-caldata`. On first boot,
+it scans the flash tail, detects shifted calibration offsets, extracts the
+blobs to `/lib/firmware/mediatek/`, and rebinds the PCIe driver dynamically.
+To run it manually on the router:
+```sh
+vmg8825-wifi-caldata auto
+```
+
+**Manual Fallback Method (Rebuilding with Inlined Caldata):**
 
 1. **Find where your calibration actually is.** On the device:
    ```

@@ -1,6 +1,14 @@
 --- a/eeprom.c
 +++ b/eeprom.c
-@@ -93,6 +93,18 @@ static int mt76_get_of_eeprom(struct mt7
+@@ -9,6 +9,7 @@
+ #include <linux/mtd/partitions.h>
+ #include <linux/nvmem-consumer.h>
+ #include <linux/etherdevice.h>
++#include <linux/firmware.h>
+ #include "mt76.h"
+ #include "mt76_connac.h"
+ 
+@@ -93,6 +94,18 @@ static int mt76_get_of_eeprom(struct mt7
  	struct device_node *np = dev->dev->of_node;
  	int ret;
  

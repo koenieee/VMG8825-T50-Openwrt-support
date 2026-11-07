@@ -49,6 +49,11 @@ fi
 step "copying openwrt-overlay/ into openwrt/"
 "$REPO/tools/sync-overlay.sh" push >/dev/null
 
+# OpenWrt APK packaging requires a valid hex commit hash in version
+if [ ! -f "$REPO/openwrt/version" ]; then
+	echo "r27123-${OPENWRT_REF:0:8}" > "$REPO/openwrt/version"
+fi
+
 cd "$REPO/openwrt"
 
 # --- feeds + config ----------------------------------------------------

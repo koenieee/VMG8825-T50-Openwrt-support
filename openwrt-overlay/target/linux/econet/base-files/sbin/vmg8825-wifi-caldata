@@ -1,0 +1,166 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+#
+# Automatic Wi-Fi Calibration Scanner and Driver Rebinding Tool for Zyxel VMG8825-T50
+#
+# Scans raw flash by signature to detect the true per-unit MT7615 calibration offsets.
+# If the offsets match the device tree defaults (0xeae0000 / 0xeb00000), it takes no
+# action. If the calibration sits at shifted offsets (e.g. 128 KiB earlier), it extracts
+# the exact 19880-byte calibration blobs to /lib/firmware/mediatek/ and triggers a live
+# PCIe driver rebind so the radios load their factory calibration without needing a custom
+# per-unit devicetree rebuild.
+#
+# Usage:
+#   vmg8825-wifi-caldata check        # Scan and report offsets vs DTS
+#   vmg8825-wifi-caldata extract      # Extract blobs to /lib/firmware/mediatek/
+#   vmg8825-wifi-caldata rebind       # Unbind and rebind mt7615e PCIe driver
+#   vmg8825-wifi-caldata auto         # Automated first-boot routine
+#
+set -u
+
+CMD="${1:-check}"
+DEV="/dev/mtd0"
+START="0x7000000"
+END="0x10000000"
+STRIDE=$((0x20000))     # 128 KiB eraseblocks
+OFF_F3=$((0xf3))        # Byte 0xf3: 0x00 on 2.4 GHz TSSI, non-zero on 5 GHz external-PA
+EEPROM_LEN=19880
+
+# Reference offsets hardcoded in board DTS
+DT_R0=$((0xeae0000))
+DT_R1=$((0xeb00000))
+
+# Fallback to whole flash MTD if /dev/mtd0 not present
+if [ ! -e "$DEV" ]; then
+	mtd_dev=$(grep '"all_of_flash"' /proc/mtd 2>/dev/null | head -n1 | cut -d: -f1)
+	if [ -n "$mtd_dev" ] && [ -e "/dev/$mtd_dev" ]; then
+		DEV="/dev/$mtd_dev"
+	fi
+fi
+
+rdhex() {
+	dd if="$DEV" bs=1 skip="$1" count="$2" 2>/dev/null | od -An -tx1 | tr -d ' \n'
+}
+
+scan_flash() {
+	[ -e "$DEV" ] || { echo "FATAL: flash device $DEV not found" >&2; return 1; }
+
+	local start=$((START))
+	local end=$((END))
+	local off=$start
+
+	r0off=""
+	r1off=""
+
+	while [ "$off" -lt "$end" ]; do
+		sig=$(rdhex "$off" 2)
+		if [ "$sig" = "1576" ]; then
+			f3=$(rdhex $((off + OFF_F3)) 1)
+			if [ "$f3" = "00" ]; then
+				[ -z "$r0off" ] && r0off=$off
+			else
+				[ -z "$r1off" ] && r1off=$off
+			fi
+		fi
+		off=$((off + STRIDE))
+	done
+
+	if [ -z "$r0off" ] || [ -z "$r1off" ]; then
+		return 2
+	fi
+	return 0
+}
+
+do_rebind() {
+	echo "Rebinding MT7615 PCIe drivers..."
+	for pci in 0000:01:00.0 0001:01:00.0; do
+		if [ -e "/sys/bus/pci/drivers/mt7615e/$pci" ]; then
+			echo "$pci" > /sys/bus/pci/drivers/mt7615e/unbind 2>/dev/null || true
+		fi
+	done
+
+	sleep 1
+
+	for pci in 0000:01:00.0 0001:01:00.0; do
+		if [ -e "/sys/bus/pci/devices/$pci" ] && [ ! -e "/sys/bus/pci/drivers/mt7615e/$pci" ]; then
+			echo "$pci" > /sys/bus/pci/drivers/mt7615e/bind 2>/dev/null || true
+		fi
+	done
+}
+
+case "$CMD" in
+check)
+	echo "Scanning $DEV for MT7615 calibration blocks..."
+	if ! scan_flash; then
+		echo "ERROR: Could not locate both MT7615 calibration blocks (sig 15 76)." >&2
+		exit 1
+	fi
+
+	printf "Detected radio0 (2.4 GHz, TSSI): 0x%08x\n" "$r0off"
+	printf "Detected radio1 (5 GHz, ext-PA): 0x%08x\n" "$r1off"
+
+	if [ "$r0off" = "$DT_R0" ] && [ "$r1off" = "$DT_R1" ]; then
+		echo "Status: MATCHES standard DTS offsets (0xeae0000 / 0xeb00000). No override needed."
+	else
+		echo "Status: DIFFERS from standard DTS offsets! Run 'vmg8825-wifi-caldata extract' to override."
+	fi
+	;;
+
+extract)
+	echo "Scanning $DEV for MT7615 calibration blocks..."
+	if ! scan_flash; then
+		echo "ERROR: Could not locate both MT7615 calibration blocks." >&2
+		exit 1
+	fi
+
+	printf "Extracting calibration: radio0 @0x%08x, radio1 @0x%08x\n" "$r0off" "$r1off"
+	mkdir -p /lib/firmware/mediatek
+
+	dd if="$DEV" bs=1 skip="$r0off" count="$EEPROM_LEN" of=/lib/firmware/mediatek/mt7615e_eeprom_0000:01:00.0.bin 2>/dev/null
+	dd if="$DEV" bs=1 skip="$r1off" count="$EEPROM_LEN" of=/lib/firmware/mediatek/mt7615e_eeprom_0001:01:00.0.bin 2>/dev/null
+	sync
+
+	echo "Wrote /lib/firmware/mediatek/mt7615e_eeprom_0000:01:00.0.bin ($(wc -c < /lib/firmware/mediatek/mt7615e_eeprom_0000:01:00.0.bin) bytes)"
+	echo "Wrote /lib/firmware/mediatek/mt7615e_eeprom_0001:01:00.0.bin ($(wc -c < /lib/firmware/mediatek/mt7615e_eeprom_0001:01:00.0.bin) bytes)"
+	;;
+
+rebind)
+	do_rebind
+	;;
+
+auto)
+	STAMP=/etc/vmg8825-wifi-caldata.done
+	if [ -f "$STAMP" ]; then
+		exit 0
+	fi
+
+	if ! scan_flash; then
+		echo "vmg8825-wifi-caldata: signature scan failed or incomplete, keeping DTS nvmem defaults" >&2
+		touch "$STAMP"
+		exit 0
+	fi
+
+	if [ "$r0off" = "$DT_R0" ] && [ "$r1off" = "$DT_R1" ]; then
+		echo "vmg8825-wifi-caldata: calibration matches DTS defaults (0xeae0000 / 0xeb00000)"
+		echo "STATUS=MATCH" > "$STAMP"
+		exit 0
+	fi
+
+	echo "vmg8825-wifi-caldata: shifted calibration detected! radio0 @0x$(printf %x "$r0off"), radio1 @0x$(printf %x "$r1off")"
+	mkdir -p /lib/firmware/mediatek
+
+	dd if="$DEV" bs=1 skip="$r0off" count="$EEPROM_LEN" of=/lib/firmware/mediatek/mt7615e_eeprom_0000:01:00.0.bin 2>/dev/null
+	dd if="$DEV" bs=1 skip="$r1off" count="$EEPROM_LEN" of=/lib/firmware/mediatek/mt7615e_eeprom_0001:01:00.0.bin 2>/dev/null
+	sync
+
+	echo "vmg8825-wifi-caldata: extracted calibration blobs; rebinding mt7615e..."
+	do_rebind
+
+	echo "STATUS=SHIFTED radio0=0x$(printf %x "$r0off") radio1=0x$(printf %x "$r1off")" > "$STAMP"
+	;;
+
+*)
+	echo "Usage: $0 {check|extract|rebind|auto}" >&2
+	exit 1
+	;;
+esac

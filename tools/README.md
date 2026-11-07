@@ -50,13 +50,13 @@ with `mediatek,eeprom-data = /bits/ 8 <UNIT_EEPROM_RADIOx>`),
 `make target/linux/clean`, and rebuild. See install-guide §8d for the
 step-by-step.
 
-> **Status:** hardware-confirmed for the per-unit path. The tester whose
-> unit had shifted caldata ran both scripts against their full-flash backup
-> and got the **same offsets and byte-identical `.dtsi`** they had already
-> hand-made and been running (router stable ~24h on it). An automatic
-> signature-scan-at-boot that would remove the per-unit rebuild is still
-> open — `find-wifi-caldata-offset.sh` is the on-device building block for
-> it, but nothing auto-rebinds the driver yet.
+> **Status:** hardware-confirmed for the per-unit path. Automatic
+> signature-scan-at-boot is provided via `/sbin/vmg8825-wifi-caldata` and
+> hotplug hook `/etc/hotplug.d/ieee80211/15-vmg8825-wifi-caldata`, which
+> detects shifted offsets on first boot, extracts the calibration files to
+> `/lib/firmware/mediatek/`, and dynamically rebinds the PCIe driver without
+> requiring a per-unit DTS rebuild. The manual `.dtsi` method below remains
+> available as a static alternative.
 
 ## Bootloader patch
 

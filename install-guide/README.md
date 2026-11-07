@@ -610,6 +610,18 @@ different flash offset than the device tree assumes (it reads from a fixed
 `wifi-caldata` offset, and that offset is not identical on every unit), so
 each radio loads the wrong card's calibration.
 
+**Automatic Resolution (On Device):**
+Images from this tree include `/sbin/vmg8825-wifi-caldata` and an automatic
+hotplug hook at `/etc/hotplug.d/ieee80211/15-vmg8825-wifi-caldata`. On first boot,
+it scans the flash tail, detects shifted calibration offsets, extracts the
+blobs to `/lib/firmware/mediatek/`, and rebinds the PCIe driver dynamically.
+To run it manually on the router:
+```sh
+vmg8825-wifi-caldata auto
+```
+
+**Manual Fallback Method (Rebuilding with Inlined Caldata):**
+
 1. **Find where your calibration actually is.** On the device:
    ```
    sh tools/find-wifi-caldata-offset.sh /dev/mtd0

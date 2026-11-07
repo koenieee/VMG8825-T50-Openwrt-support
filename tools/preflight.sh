@@ -22,9 +22,16 @@ bad()  { echo "  FAIL  $*"; fails=$((fails + 1)); }
 warn() { echo "  warn  $*"; }
 
 echo "tools"
-for t in python3 atftp md5sum; do
+for t in python3 md5sum; do
 	if command -v $t >/dev/null; then ok "$t"; else bad "$t not installed"; fi
 done
+if command -v atftp >/dev/null; then
+	ok "atftp"
+elif [ -f "$REPO/tools/tftp_client.py" ]; then
+	ok "tftp_client.py (built-in zero-dependency Python TFTP client)"
+else
+	bad "no TFTP client found (install atftp or keep tools/tftp_client.py)"
+fi
 
 echo "serial console ($TTY)"
 if [ ! -e "$TTY" ]; then

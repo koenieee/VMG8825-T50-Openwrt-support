@@ -76,4 +76,7 @@ fixed-offset reference fallback.
   (they do not reach a build otherwise).
 - `preflight.sh` — read-only pre-install checks (tools, serial, image
   checksums, TFTP address).
+- `tftp_client.py` — zero-dependency RFC 1350 Python TFTP client for
+  uploading kernel and firmware images to `ZHAL>` (eliminates the need for
+  `atftp` or external system TFTP servers on macOS/Linux/Windows).
 - `atenv3/` — the debug-unlock password tool.

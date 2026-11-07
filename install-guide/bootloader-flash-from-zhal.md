@@ -169,6 +169,10 @@ ZHAL> ATLD bl.bin
 ```
 Then on the PC (the router is the TFTP *server* here):
 ```
+# Using the built-in Python TFTP client:
+python3 tools/tftp_client.py 192.168.1.1 bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin bl.bin
+
+# Or using atftp:
 atftp --put --local-file bldr-patch/mtd0-rsa-and-crc-bypass-patched.bin \
       --remote-file bl.bin 192.168.1.1
 ```

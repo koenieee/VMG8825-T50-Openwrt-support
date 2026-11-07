@@ -143,10 +143,23 @@ if b"incorrect" in low or b"invalid" in low or b"wrong" in low:
 print(ts(), "### ATLD %s (to 0x80020000, TFTP)" % os.path.basename(KERNEL))
 send("ATLD %s" % os.path.basename(KERNEL))
 pump(2, "atld-cmd")
-r = subprocess.run(["atftp", "--put", "--local-file", KERNEL,
-                     "--remote-file", os.path.basename(KERNEL), "192.168.1.1"],
-                    capture_output=True, text=True, timeout=300)
-print(ts(), "atftp rc:", r.returncode)
+tftp_done = False
+try:
+    sys.path.insert(0, os.path.join(REPO, "tools"))
+    import tftp_client
+    tftp_client.tftp_put("192.168.1.1", KERNEL, remote_name=os.path.basename(KERNEL), quiet=True)
+    tftp_done = True
+    print(ts(), "tftp_client.py upload succeeded")
+except Exception as ex:
+    print(ts(), "tftp_client.py fallback to atftp binary:", ex)
+    r = subprocess.run(["atftp", "--put", "--local-file", KERNEL,
+                         "--remote-file", os.path.basename(KERNEL), "192.168.1.1"],
+                        capture_output=True, text=True, timeout=300)
+    print(ts(), "atftp rc:", r.returncode)
+    tftp_done = (r.returncode == 0)
+
+if not tftp_done:
+    die("no TFTP client succeeded in sending kernel", 7)
 b = pump(15, "tftp-confirm")
 if b"File download" not in b:
     die("no TFTP confirmation for kernel", 7)

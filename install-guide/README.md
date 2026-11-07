@@ -142,11 +142,12 @@ Hardware:
 - An Ethernet cable from your PC directly to the router's LAN port (not
   through a switch/other router — TFTP in §4 needs a direct link).
 
-Software (Linux assumed below; on Windows, do this inside WSL):
+Software (Linux assumed below; macOS and Windows WSL work too):
 - A serial terminal program: `screen` (used in the examples below,
   `sudo apt install screen`), `minicom`, or `picocom` all work.
-- `python3` and `atftp` (`sudo apt install atftp`) if you're using the
-  scripted route; just `atftp` if you're doing everything by hand.
+- `python3` (standard library only; the repo includes `tools/tftp_client.py`,
+  so installing `atftp` is optional). If preferred, `atftp` (`sudo apt install atftp`)
+  is also supported.
 - This repo cloned. `tools/atenv3/atenv3_passwd` ships as a static
   x86-64 binary that runs on any 64-bit x86 Linux. Only if it does not
   run for you (other CPU architecture), build it with a C compiler:
@@ -267,6 +268,10 @@ configured; otherwise pull and reapply power by hand.
 > ```
 > then push the file from your PC — the router is the TFTP server here:
 > ```
+> # Using the built-in zero-dependency Python TFTP client:
+> python3 tools/tftp_client.py 192.168.1.1 firmware/vmg8825-t50-initramfs-kernel.bin
+>
+> # Or using atftp if installed:
 > atftp --put --local-file firmware/vmg8825-t50-initramfs-kernel.bin \
 >       --remote-file vmg8825-t50-initramfs-kernel.bin 192.168.1.1
 > ```

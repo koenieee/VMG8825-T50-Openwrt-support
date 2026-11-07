@@ -122,9 +122,22 @@ print(ts(), "[+] ATEN unlock OK")
 print(ts(), "### ATLD %s -> RAM 0x%x (%d / 0x%x bytes)" % (FW_NAME, RAM_ADDR, FW_LEN, FW_LEN))
 send("ATLD %s" % FW_NAME)
 pump(2, "atld-cmd")
-r = subprocess.run(["atftp", "--put", "--local-file", FW, "--remote-file", FW_NAME, SERVER],
-                    capture_output=True, text=True, timeout=180)
-print(ts(), "atftp rc:", r.returncode, (r.stdout + r.stderr).strip()[:200])
+tftp_done = False
+try:
+    sys.path.insert(0, os.path.join(REPO, "tools"))
+    import tftp_client
+    tftp_client.tftp_put(SERVER, FW, remote_name=FW_NAME, quiet=True)
+    tftp_done = True
+    print(ts(), "tftp_client.py upload succeeded")
+except Exception as ex:
+    print(ts(), "tftp_client.py fallback to atftp binary:", ex)
+    r = subprocess.run(["atftp", "--put", "--local-file", FW, "--remote-file", FW_NAME, SERVER],
+                        capture_output=True, text=True, timeout=180)
+    print(ts(), "atftp rc:", r.returncode, (r.stdout + r.stderr).strip()[:200])
+    tftp_done = (r.returncode == 0)
+
+if not tftp_done:
+    die("TFTP transfer failed", 7)
 b = pump(20, "tftp-confirm")
 if b"File download" not in b:
     die("no TFTP confirmation for image", 7)

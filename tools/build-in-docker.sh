@@ -5,10 +5,10 @@
 # them. Same arguments and environment (OUT, JOBS, OPENWRT_REF) as
 # build-firmware.sh; output lands in out/ as usual, owned by you.
 #
-# Pick one per checkout: host tools that openwrt/ already built on your PC
-# are linked against your PC's libc and may not run in the container (and
-# the other way round). To switch, start from a clean tree first:
-#   rm -rf openwrt/build_dir openwrt/staging_dir openwrt/tmp
+# On macOS: macOS host filesystem is case-insensitive, which fails OpenWrt's
+# case-sensitive-fs requirement. We automatically use a persistent Docker named
+# volume (ext4 inside the Docker VM) to build at native speed and copy the
+# resulting artifacts back to out/.
 #
 # Needs Docker (or Podman: DOCKER=podman tools/build-in-docker.sh).
 
@@ -17,15 +17,35 @@ set -e
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DOCKER="${DOCKER:-docker}"
 IMAGE=vmg8825-t50-build
+VOLUME=vmg8825-build-vol
 
 "$DOCKER" build -q -t "$IMAGE" "$REPO/tools/docker" >/dev/null
 
-# Mounted at the same path as on the host, so paths printed by the build
-# (and OUT if you set one inside the repo) mean the same thing outside.
-# -it only with a terminal, so it also runs from CI or a cron job.
-tty=; [ -t 0 ] && tty=-it
-exec "$DOCKER" run --rm $tty \
-	--user "$(id -u):$(id -g)" \
-	-v "$REPO:$REPO" -w "$REPO" \
-	-e OUT -e JOBS -e OPENWRT_REF \
-	"$IMAGE" tools/build-firmware.sh "$@"
+mkdir -p "$REPO/out"
+
+if [ "$(uname)" = "Darwin" ]; then
+	echo "macOS detected: using Docker named volume ($VOLUME) for case-sensitive ext4 build"
+	"$DOCKER" volume inspect "$VOLUME" >/dev/null 2>&1 || "$DOCKER" volume create "$VOLUME" >/dev/null
+
+	# Sync repo to container volume (skip git history and build output to be fast)
+	echo "Syncing workspace into container volume..."
+	tar --exclude='out/*' --exclude='.git' -cf - -C "$REPO" . | \
+		"$DOCKER" run --rm -i -v "$VOLUME:/work" "$IMAGE" tar -xf - -C /work
+
+	tty=; [ -t 0 ] && tty=-it
+	"$DOCKER" run --rm $tty \
+		-v "$VOLUME:/work" -w /work \
+		-e OUT=/work/out -e JOBS -e OPENWRT_REF \
+		"$IMAGE" tools/build-firmware.sh "$@"
+
+	echo "Copying build artifacts to $REPO/out/..."
+	"$DOCKER" run --rm -v "$VOLUME:/work" -v "$REPO/out:/host_out" "$IMAGE" \
+		sh -c 'cp -a /work/out/. /host_out/ 2>/dev/null || true'
+else
+	tty=; [ -t 0 ] && tty=-it
+	exec "$DOCKER" run --rm $tty \
+		--user "$(id -u):$(id -g)" \
+		-v "$REPO:$REPO" -w "$REPO" \
+		-e OUT -e JOBS -e OPENWRT_REF \
+		"$IMAGE" tools/build-firmware.sh "$@"
+fi

@@ -4,11 +4,10 @@
 # https://openwrt.org/docs/guide-developer/toolchain/install-buildsystem
 FROM ubuntu:24.04
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-	build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-	gettext git libncurses-dev libssl-dev python3 python3-setuptools \
-	rsync swig unzip zlib1g-dev file wget ca-certificates xz-utils \
-	bzip2 patch perl time && \
+RUN apt-get update && \
+	PKGS="build-essential clang flex bison g++ gawk gettext git libncurses-dev libssl-dev python3 python3-setuptools rsync swig unzip zlib1g-dev file wget ca-certificates xz-utils bzip2 patch perl time" && \
+	if [ "$(dpkg --print-architecture)" = "amd64" ]; then PKGS="$PKGS gcc-multilib g++-multilib"; fi && \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $PKGS && \
 	rm -rf /var/lib/apt/lists/*
 
 # OpenWrt refuses to build as root; build-in-docker.sh runs as your own uid.

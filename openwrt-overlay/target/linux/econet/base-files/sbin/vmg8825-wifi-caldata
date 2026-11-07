@@ -12,7 +12,7 @@
 #   deploying the generic MT7615 calibration blob so Wi-Fi does not get stuck at 5-6 dBm.
 #
 # Usage:
-#   vmg8825-wifi-caldata check        # Scan and report offsets vs DTS
+#   vmg8825-wifi-caldata check|scan   # Scan and report offsets vs DTS
 #   vmg8825-wifi-caldata extract      # Extract blobs to /lib/firmware/mediatek/
 #   vmg8825-wifi-caldata rebind       # Unbind and rebind mt7615e PCIe driver
 #   vmg8825-wifi-caldata auto         # Automated first-boot routine
@@ -102,7 +102,7 @@ do_rebind() {
 }
 
 case "$CMD" in
-check)
+check|scan)
 	echo "Scanning $DEV for MT7615 calibration blocks..."
 	if ! scan_flash; then
 		echo "WARNING: Could not locate both MT7615 calibration blocks (sig 15 76) on flash."

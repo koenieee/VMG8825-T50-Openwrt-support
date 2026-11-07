@@ -29,12 +29,14 @@ if [ "$(uname)" = "Darwin" ]; then
 
 	# Sync repo to container volume (skip git history and build output to be fast)
 	echo "Syncing workspace into container volume..."
+	export COPYFILE_DISABLE=1
 	tar --exclude='out/*' --exclude='.git' -cf - -C "$REPO" . | \
-		"$DOCKER" run --rm -i -v "$VOLUME:/work" "$IMAGE" tar -xf - -C /work
+		"$DOCKER" run --rm -i -v "$VOLUME:/work" "$IMAGE" sh -c "tar -xf - -C /work && find /work -name '._*' -delete"
 
 	tty=; [ -t 0 ] && tty=-it
 	"$DOCKER" run --rm $tty \
 		-v "$VOLUME:/work" -w /work \
+		-e FORCE_UNSAFE_CONFIGURE=1 \
 		-e OUT=/work/out -e JOBS -e OPENWRT_REF \
 		"$IMAGE" tools/build-firmware.sh "$@"
 

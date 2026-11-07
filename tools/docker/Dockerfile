@@ -12,4 +12,5 @@ RUN apt-get update && \
 
 # OpenWrt refuses to build as root; build-in-docker.sh runs as your own uid.
 ENV HOME=/tmp/home
+ENV FORCE_UNSAFE_CONFIGURE=1
 RUN mkdir -m 1777 /tmp/home && git config --system --add safe.directory '*'

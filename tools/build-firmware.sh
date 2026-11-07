@@ -51,7 +51,7 @@ step "copying openwrt-overlay/ into openwrt/"
 
 # OpenWrt APK packaging requires a valid hex commit hash in version
 if [ ! -f "$REPO/openwrt/version" ]; then
-	echo "r27123-${OPENWRT_REF:0:8}" > "$REPO/openwrt/version"
+	printf 'r27123-%.8s\n' "$OPENWRT_REF" > "$REPO/openwrt/version"
 fi
 
 cd "$REPO/openwrt"

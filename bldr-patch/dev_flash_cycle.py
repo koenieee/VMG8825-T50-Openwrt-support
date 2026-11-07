@@ -181,9 +181,22 @@ def flash_main(ser, image_path):
     print(ts(), "### ATLD %s -> RAM 0x%x (%d bytes, md5 %s)" % (fw_name, RAM_ADDR, fw_len, fw_md5))
     ser.send("ATLD %s" % fw_name)
     ser.pump(2, "atld-cmd")
-    r = subprocess.run(["atftp", "--put", "--local-file", image_path, "--remote-file", fw_name, SERVER],
-                        capture_output=True, text=True, timeout=180)
-    print(ts(), "atftp rc:", r.returncode, (r.stdout + r.stderr).strip()[:200])
+    tftp_done = False
+    try:
+        sys.path.insert(0, os.path.join(REPO, "tools"))
+        import tftp_client
+        tftp_client.tftp_put(SERVER, image_path, remote_name=fw_name, quiet=True)
+        tftp_done = True
+        print(ts(), "tftp_client.py upload succeeded")
+    except Exception as ex:
+        print(ts(), "tftp_client.py fallback to atftp binary:", ex)
+        r = subprocess.run(["atftp", "--put", "--local-file", image_path, "--remote-file", fw_name, SERVER],
+                            capture_output=True, text=True, timeout=180)
+        print(ts(), "atftp rc:", r.returncode, (r.stdout + r.stderr).strip()[:200])
+        tftp_done = (r.returncode == 0)
+
+    if not tftp_done:
+        die("TFTP transfer failed", 7)
     b = ser.pump(20, "tftp-confirm")
     if b"File download" not in b:
         die("no TFTP confirmation for image", 7)

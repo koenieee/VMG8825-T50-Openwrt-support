@@ -640,9 +640,11 @@ each radio loads the wrong card's calibration.
    picked up incrementally). After flashing that build, both radios should
    reach their regulatory ceiling (20 dBm / 23 dBm under GB).
 
-See `tools/README.md` for details. This per-unit path is the one a tester
-verified on hardware; a generic signature-scan-at-boot that would avoid the
-rebuild entirely is still open.
+See `tools/README.md` for details. This per-unit path is hardware-confirmed:
+a tester with shifted caldata ran these scripts on their full-flash backup and
+got the same offsets and a byte-identical `.dtsi` to the one they had already
+hand-made and were running (stable ~24h). A generic signature-scan-at-boot that
+would avoid the rebuild entirely is still open.
 
 ## 9. Secure WiFi
 

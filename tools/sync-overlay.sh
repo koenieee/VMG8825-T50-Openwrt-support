@@ -25,6 +25,7 @@ MODE="${1:-push}"
 PAIRS="
 target/linux/econet:openwrt/target/linux/econet
 package/kernel/econet-eth:openwrt/package/kernel/econet-eth
+package/kernel/mt76:openwrt/package/kernel/mt76
 "
 
 die() { echo "sync-overlay: $*" >&2; exit 1; }

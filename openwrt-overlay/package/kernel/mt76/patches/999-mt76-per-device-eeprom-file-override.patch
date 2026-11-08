@@ -1,0 +1,29 @@
+--- a/eeprom.c
++++ b/eeprom.c
+@@ -9,6 +9,7 @@
+ #include <linux/mtd/partitions.h>
+ #include <linux/nvmem-consumer.h>
+ #include <linux/etherdevice.h>
++#include <linux/firmware.h>
+ #include "mt76.h"
+ #include "mt76_connac.h"
+ 
+@@ -93,6 +94,18 @@ static int mt76_get_of_eeprom(struct mt7
+ 	struct device_node *np = dev->dev->of_node;
+ 	int ret;
+ 
++	const struct firmware *fw = NULL;
++	char name[64];
++
++	snprintf(name, sizeof(name), "mediatek/mt7615e_eeprom_%s.bin", dev_name(dev->dev));
++	if (request_firmware(&fw, name, dev->dev) == 0) {
++		if (fw->size >= len)
++			memcpy(eep, fw->data, len);
++		release_firmware(fw);
++		dev_info(dev->dev, "loaded calibration from %s\n", name);
++		return 0;
++	}
++
+ 	if (!np)
+ 		return -ENOENT;
+ 

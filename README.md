@@ -81,6 +81,12 @@ console, and following `install-guide/README.md` step by step.
   conservative 256 MB) — confirmed booting clean (`MemTotal: 443152 kB`).
 - Persistent `/overlay` (UBIFS-backed on its own MTD partition, not
   tmpfs) — config survives reboots.
+- Front-panel LEDs and physical buttons — reverse-engineered from the
+  OEM firmware backup (`/userfs/led.conf`). All 8 status LEDs (Power
+  green/red, WAN link, Internet green/red, LAN, WPS, DSL, Phone
+  green/amber) and all 4 buttons (Reset, LED toggle switch, WPS, WiFi
+  toggle) are supported via `gpio-leds` and `gpio-keys-polled` with
+  automatic `netdev` link and activity triggers.
 - Flashing MAIN via the raw `ATER`/`ATWF` primitives (not `ATUR`, which
   silently stops writing NAND after a device's first successful flash).
   `bldr-patch/dev_flash_cycle.py` automates the full
